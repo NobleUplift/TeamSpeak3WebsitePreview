@@ -245,28 +245,59 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
 }
 
 const char* GetURLFromMessage(const char* message) {
+	//char prefix[5];
 	const char *urlStart;
-	const char *url;
-#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
-	char *context;
-#endif
+	const char *urlEnd;
+	char *url;
+	size_t length;
+
+	/*strncpy(prefix, message, 5);
+	if (strcmp(prefix, "[URL]") == 0 || strcmp(prefix, "[url]") == 0) {
+		return NULL;
+	}*/
 	
-	urlStart = strstr(message, "http://"); // ((mailto\:|(news|(ht|f)tp(s?)|)\://|www.){1}\S+) http://regexlib.com/RETester.aspx?regexp_id=37
+	urlStart = strstr(message, "[URL]"); // ((mailto\:|(news|(ht|f)tp(s?)|)\://|www.){1}\S+) http://regexlib.com/RETester.aspx?regexp_id=37
 	if (urlStart == NULL) {
-		urlStart = strstr(message, "www");
+		urlStart = strstr(message, "[url]");
 	}
 
 	if (urlStart == NULL) {
 		return NULL;
 	}
 
-#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
-	url = strtok_s((char *) urlStart, "[", &context);
-#else
-	url = strtok((char *) urlStart, "[");
-#endif
+	/*
+	 * If the pointer to message is the same as urlStart,
+	 * message begins with [URL]
+	 */
+	if (message != urlStart) {
+		return NULL;
+	}
 
-	return url;
+	urlStart += 5;
+
+	urlEnd = strstr(urlStart, "[/URL]");
+	if (urlEnd == NULL) {
+		urlEnd = strstr(urlStart, "[/url]");
+	}
+
+	if (urlEnd == NULL) {
+		return NULL;
+	}
+
+	/*
+	 * A message exists after the URL
+	 */
+	if (urlEnd[6] != '\0') {
+		return NULL;
+	}
+
+	length = urlEnd - urlStart;
+
+	url = (char *) malloc(length + 1);
+	memcpy((void *) url, urlStart, length);
+	url[length] = 0;
+
+	return (const char *) url;
 }
 
 void GetHTML(const char* url, struct MemoryStruct *chunk, CURLcode *curlCode, const char *curlMessage) {
@@ -380,7 +411,7 @@ int ts3plugin_onTextMessageEvent(
 			ts3Functions.logMessage(errorMessage, LogLevel_INFO, "Plugin", serverConnectionHandlerID);
 
 			doc = htmlReadMemory(chunk.memory, chunk.size, url, NULL, HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
-			if (doc == 0) {
+			if (!doc) {
 				ts3Functions.logMessage("Could not read HTML document from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
 				free(chunk.memory);
 				return 0;
