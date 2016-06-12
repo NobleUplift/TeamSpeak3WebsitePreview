@@ -1,12 +1,14 @@
 #ifdef _WIN32
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
-#include <Windows.h>
+#include <windows.h>
+#include <delayimp.h>
 #endif
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
 #include "teamspeak/public_errors.h"
 #include "teamspeak/public_errors_rare.h"
 #include "teamspeak/public_definitions.h"
@@ -15,9 +17,19 @@
 #include "ts3_functions.h"
 #include "plugin.h"
 
-#include <curl.h>
-#include <HTMLparser.h>
-#include <xpath.h>
+// Configuration Properties / Linker / Input / Additional Dependencies: ./lib/libcurl.lib;./lib/libxml2.lib;./lib/iconv.lib;./lib/zlib1.lib;%(AdditionalDependencies)
+// Configuration Properties / Linker / Input /Delay Loaded Dlls: libcurl;libxml2;iconv;zlib1;%(DelayLoadDLLs)
+
+#include "curl.h"
+#include "HTMLparser.h"
+#include "xpath.h"
+
+#ifdef _WIN32
+#pragma comment(lib, "libcurl")
+#pragma comment(lib, "iconv")
+#pragma comment(lib, "libxml2")
+#pragma comment(lib, "zlib1")
+#endif
 
 static struct TS3Functions ts3Functions;
 
@@ -124,6 +136,26 @@ int ts3plugin_init() {
 	ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE);
 
 	printf("PLUGIN: App path: %s\nResources path: %s\nConfig path: %s\nPlugin path: %s\n", appPath, resourcesPath, configPath, pluginPath);
+
+#ifdef _WIN32
+	SetDllDirectory(L"./ts3websitepreview");
+	if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
+		ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
+		return 1;
+	}
+	if (FAILED(__HrLoadAllImportsForDll("libxml2.dll"))) {
+		ts3Functions.logMessage("Could not load libxml.", LogLevel_ERROR, "Plugin", 0);
+		return 1;
+	}
+	if (FAILED(__HrLoadAllImportsForDll("zlib1.dll"))) {
+		ts3Functions.logMessage("Could not load zlib1.", LogLevel_ERROR, "Plugin", 0);
+		return 1;
+	}
+	if (FAILED(__HrLoadAllImportsForDll("iconv.dll"))) {
+		ts3Functions.logMessage("Could not load iconv.", LogLevel_ERROR, "Plugin", 0);
+		return 1;
+	}
+#endif
 
     return 0;  /* 0 = success, 1 = failure, -2 = failure but client will not show a "failed to load" warning */
 	/* -2 is a very special case and should only be used if a plugin displays a dialog (e.g. overlay) asking the user to disable
@@ -266,8 +298,8 @@ const char* GetURLFromMessage(const char* message) {
 	}
 
 	/*
-	 * If the pointer to message is the same as urlStart,
-	 * message begins with [URL]
+	 * If the pointer to message is not the same as urlStart,
+	 * message does not begin with [URL]
 	 */
 	if (message != urlStart) {
 		return NULL;
@@ -285,7 +317,7 @@ const char* GetURLFromMessage(const char* message) {
 	}
 
 	/*
-	 * A message exists after the URL
+	 * If [/URL] is not followed by null, there is a message after the URL
 	 */
 	if (urlEnd[6] != '\0') {
 		return NULL;
@@ -359,7 +391,7 @@ int ts3plugin_onTextMessageEvent(
 
 	/* Friend/Foe manager has ignored the message, so ignore here as well. */
 	if (ffIgnored) {
-		sentSelfMessage = 1;
+		//sentSelfMessage = 1;
 		return 1; /* Client will ignore the message anyways, so return value here doesn't matter */
 	}
 
@@ -403,7 +435,7 @@ int ts3plugin_onTextMessageEvent(
 				ts3Functions.logMessage(curlMessage, LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
 			}
 
-#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
+#if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
 			sprintf_s(errorMessage, 128, "Reading HTML file that is the following bytes long: %d", chunk.size);
 #else
 			sprintf(errorMessage, "Reading HTML file that is the following bytes long: %d", chunk.size);

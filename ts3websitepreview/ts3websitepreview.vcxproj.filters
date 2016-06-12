@@ -50,5 +50,8 @@
     <ClInclude Include="include\teamspeak3\teamlog\logtypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="plugin.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
