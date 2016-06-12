@@ -126,7 +126,7 @@ int ts3plugin_init() {
 	char pluginPath[PATH_BUFSIZE];
 
     /* Your plugin init code here */
-    printf("PLUGIN: init\n");
+    printf("PLUGIN: TS3 Website Preview initializing...\n");
 
     /* Example on how to query application, resources and configuration paths from client */
     /* Note: Console client returns empty string for app and resources path */
@@ -138,7 +138,7 @@ int ts3plugin_init() {
 	printf("PLUGIN: App path: %s\nResources path: %s\nConfig path: %s\nPlugin path: %s\n", appPath, resourcesPath, configPath, pluginPath);
 
 #ifdef _WIN32
-	SetDllDirectory(L"./ts3websitepreview");
+	SetDllDirectory(L"./plugins/ts3websitepreview/");
 	if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
 		ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
