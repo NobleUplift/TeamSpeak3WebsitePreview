@@ -18,7 +18,7 @@
 #include "plugin.h"
 
 // Configuration Properties / Linker / Input / Additional Dependencies: ./lib/libcurl.lib;./lib/libxml2.lib;./lib/iconv.lib;./lib/zlib1.lib;%(AdditionalDependencies)
-// Configuration Properties / Linker / Input /Delay Loaded Dlls: libcurl;libxml2;iconv;zlib1;%(DelayLoadDLLs)
+// Configuration Properties / Linker / Input / Delay Loaded Dlls: libcurl;libxml2;iconv;zlib1;%(DelayLoadDLLs)
 
 #include "curl.h"
 #include "HTMLparser.h"
@@ -138,7 +138,11 @@ int ts3plugin_init() {
 	printf("PLUGIN: App path: %s\nResources path: %s\nConfig path: %s\nPlugin path: %s\n", appPath, resourcesPath, configPath, pluginPath);
 
 #ifdef _WIN32
-	SetDllDirectory(L"./plugins/ts3websitepreview/");
+	if (SetDllDirectory(L"./plugins/ts3websitepreview/") == 0) {
+		ts3Functions.logMessage("Failed to set DLL directory.", LogLevel_ERROR, "Plugin", 0);
+		return 1;
+	}
+
 	if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
 		ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
