@@ -17,11 +17,9 @@
 #include "ts3_functions.h"
 #include "plugin.h"
 
-// Configuration Properties / Linker / Input / Additional Dependencies: ./lib/libcurl.lib;./lib/libxml2.lib;./lib/iconv.lib;./lib/zlib1.lib;%(AdditionalDependencies)
-// Configuration Properties / Linker / Input / Delay Loaded Dlls: libcurl;libxml2;iconv;zlib1;%(DelayLoadDLLs)
-
 #include "curl.h"
 #include "HTMLparser.h"
+#include "globals.h"
 #include "xpath.h"
 
 #ifdef _WIN32
@@ -149,14 +147,6 @@ int ts3plugin_init() {
 	}
 	if (FAILED(__HrLoadAllImportsForDll("libxml2.dll"))) {
 		ts3Functions.logMessage("Could not load libxml.", LogLevel_ERROR, "Plugin", 0);
-		return 1;
-	}
-	if (FAILED(__HrLoadAllImportsForDll("zlib1.dll"))) {
-		ts3Functions.logMessage("Could not load zlib1.", LogLevel_ERROR, "Plugin", 0);
-		return 1;
-	}
-	if (FAILED(__HrLoadAllImportsForDll("iconv.dll"))) {
-		ts3Functions.logMessage("Could not load iconv.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
 	}
 #endif
@@ -484,6 +474,9 @@ int ts3plugin_onTextMessageEvent(
 #endif
 			
 			xmlFree(keyword);
+			xmlXPathFreeObject(result);
+			xmlFreeDoc(doc);
+			free(chunk.memory);
 			
 			sentSelfMessage = 1;
 			if (ts3Functions.requestSendChannelTextMsg(serverConnectionHandlerID, newMessage, channelID, NULL) != ERROR_ok) {

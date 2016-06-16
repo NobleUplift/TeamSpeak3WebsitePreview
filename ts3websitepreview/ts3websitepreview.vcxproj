@@ -107,7 +107,7 @@
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
       <AdditionalDependencies>./lib/libcurl.lib;./lib/libxml2.lib;./lib/iconv.lib;./lib/zlib1.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libcurl;libxml2;iconv;zlib1;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <DelayLoadDLLs>libcurl.dll;libxml2.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
