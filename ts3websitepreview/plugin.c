@@ -1,6 +1,7 @@
 #ifdef _WIN32
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
 #include <windows.h>
+#include <tchar.h>
 #include <delayimp.h>
 #endif
 
@@ -15,12 +16,13 @@
 #include "teamspeak/public_rare_definitions.h"
 #include "teamspeak/clientlib_publicdefinitions.h"
 #include "ts3_functions.h"
-#include "plugin.h"
 
 #include "curl.h"
 #include "HTMLparser.h"
 #include "globals.h"
 #include "xpath.h"
+
+#include "plugin.h"
 
 #ifdef _WIN32
 #pragma comment(lib, "libcurl")
@@ -122,6 +124,10 @@ int ts3plugin_init() {
     char resourcesPath[PATH_BUFSIZE];
     char configPath[PATH_BUFSIZE];
 	char pluginPath[PATH_BUFSIZE];
+	//TCHAR buffer[MAX_PATH];
+	//char* path = (char *) malloc(sizeof(char)*100);
+    //GetModuleFileName( NULL, buffer, MAX_PATH );
+	//wcharToUtf8(buffer, &path);
 
     /* Your plugin init code here */
     printf("PLUGIN: TS3 Website Preview initializing...\n");
@@ -133,20 +139,42 @@ int ts3plugin_init() {
     ts3Functions.getConfigPath(configPath, PATH_BUFSIZE);
 	ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE);
 
-	printf("PLUGIN: App path: %s\nResources path: %s\nConfig path: %s\nPlugin path: %s\n", appPath, resourcesPath, configPath, pluginPath);
+	//ts3Functions.logMessage("Current working directory.: ", LogLevel_INFO, "Plugin", 0);
+	//ts3Functions.logMessage((const char *) path, LogLevel_INFO, "Plugin", 0);
+
+	//printf("PLUGIN: App path: %s\nResources path: %s\nConfig path: %s\nPlugin path: %s\n", appPath, resourcesPath, configPath, pluginPath);
+	ts3Functions.logMessage("App path: ", LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage(appPath, LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage("Resources path: ", LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage(resourcesPath, LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage("Config path: ", LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage(configPath, LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage("Plugin path: ", LogLevel_INFO, "Plugin", 0);
+	ts3Functions.logMessage(pluginPath, LogLevel_INFO, "Plugin", 0);
 
 #ifdef _WIN32
-	if (SetDllDirectory(L"./plugins/ts3websitepreview/") == 0) {
+	if (SetDllDirectory(L".\\plugins\\ts3websitepreview") == 0) {
 		ts3Functions.logMessage("Failed to set DLL directory.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
 	}
 
-	if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
+	__try {
+		if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
+			ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
+			return 1;
+		}
+	} __except(FACILITY_VISUALCPP) {
 		ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
 	}
-	if (FAILED(__HrLoadAllImportsForDll("libxml2.dll"))) {
-		ts3Functions.logMessage("Could not load libxml.", LogLevel_ERROR, "Plugin", 0);
+
+	__try {
+		if (FAILED(__HrLoadAllImportsForDll("libxml2.dll"))) {
+			ts3Functions.logMessage("Could not load libxml.", LogLevel_ERROR, "Plugin", 0);
+			return 1;
+		}
+	} __except(FACILITY_VISUALCPP) {
+		ts3Functions.logMessage("Could not load libxml2.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
 	}
 #endif
@@ -403,7 +431,7 @@ int ts3plugin_onTextMessageEvent(
 			htmlDocPtr doc;
 			xmlXPathContextPtr context;
 			xmlXPathObjectPtr result;
-			xmlChar * keyword;
+			char * keyword;
 
 			int i;
 			char newMessage[1024];
@@ -454,7 +482,7 @@ int ts3plugin_onTextMessageEvent(
 			}
 
 			for (i=0; i < result->nodesetval->nodeNr; i++) {
-				keyword = xmlNodeListGetString(doc, result->nodesetval->nodeTab[i]->xmlChildrenNode, 1);
+				keyword = (char *) xmlNodeListGetString(doc, result->nodesetval->nodeTab[i]->xmlChildrenNode, 1);
 				continue;
 				//printf("keyword: %s\n", keyword);
 			}
@@ -473,7 +501,7 @@ int ts3plugin_onTextMessageEvent(
 			strcat(newMessage, ">");
 #endif
 			
-			xmlFree(keyword);
+			//xmlFree(keyword);
 			xmlXPathFreeObject(result);
 			xmlFreeDoc(doc);
 			free(chunk.memory);
