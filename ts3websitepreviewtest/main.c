@@ -1,7 +1,7 @@
 #ifdef _WIN32
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
 #include <windows.h>
-#include <delayimp.h>
+//#include <delayimp.h>
 #include <tchar.h>
 #endif
 
@@ -15,12 +15,12 @@
 #include "libxml/globals.h"
 #include "libxml/xpath.h"
 
-#ifdef _WIN32
+/*#ifdef _WIN32
 #pragma comment(lib, "libcurl")
 #pragma comment(lib, "iconv")
 #pragma comment(lib, "libxml2")
 #pragma comment(lib, "zlib1")
-#endif
+#endif*/
 
 /* Clientlib */
 

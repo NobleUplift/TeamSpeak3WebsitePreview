@@ -2,7 +2,7 @@
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
 #include <windows.h>
 #include <tchar.h>
-#include <delayimp.h>
+//#include <delayimp.h>
 #endif
 
 #include <stdio.h>
@@ -24,12 +24,12 @@
 
 #include "plugin.h"
 
-#ifdef _WIN32
+/*#ifdef _WIN32
 #pragma comment(lib, "libcurl")
 #pragma comment(lib, "iconv")
 #pragma comment(lib, "libxml2")
 #pragma comment(lib, "zlib1")
-#endif
+#endif*/
 
 static struct TS3Functions ts3Functions;
 
@@ -152,7 +152,7 @@ int ts3plugin_init() {
 	ts3Functions.logMessage("Plugin path: ", LogLevel_INFO, "Plugin", 0);
 	ts3Functions.logMessage(pluginPath, LogLevel_INFO, "Plugin", 0);
 
-#ifdef _WIN32
+/*#ifdef _WIN32
 	if (SetDllDirectory(L".\\plugins\\ts3websitepreview") == 0) {
 		ts3Functions.logMessage("Failed to set DLL directory.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
@@ -177,7 +177,7 @@ int ts3plugin_init() {
 		ts3Functions.logMessage("Could not load libxml2.", LogLevel_ERROR, "Plugin", 0);
 		return 1;
 	}
-#endif
+#endif*/
 
     return 0;  /* 0 = success, 1 = failure, -2 = failure but client will not show a "failed to load" warning */
 	/* -2 is a very special case and should only be used if a plugin displays a dialog (e.g. overlay) asking the user to disable
@@ -501,7 +501,7 @@ int ts3plugin_onTextMessageEvent(
 			strcat(newMessage, ">");
 #endif
 			
-			//xmlFree(keyword);
+			xmlFree(keyword);
 			xmlXPathFreeObject(result);
 			xmlFreeDoc(doc);
 			free(chunk.memory);
