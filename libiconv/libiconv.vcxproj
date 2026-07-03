@@ -94,11 +94,11 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)ts3websitepreview_win32.ts3_plugin\plugins\ts3websitepreview\</OutDir>
+    <OutDir>..\Release\staging_win32\plugins\ts3websitepreview\</OutDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(SolutionDir)ts3websitepreview_win64.ts3_plugin\plugins\ts3websitepreview\</OutDir>
+    <OutDir>..\Release\staging_x64\plugins\ts3websitepreview\</OutDir>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
