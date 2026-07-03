@@ -169,7 +169,7 @@ copy /Y "$(ProjectDir)lib\libcurl.dll" "$(SolutionDir)Release\staging_win32\plug
 copy /Y "$(ProjectDir)lib\libxml2.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_win32\package.ini'"
 if exist "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin"
-powershell -NoProfile -Command "Compress-Archive -Path '$(SolutionDir)Release\staging_win32\*' -DestinationPath '$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin'"</Command>
+powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_win32', '$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin')"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -201,13 +201,15 @@ copy /Y "$(ProjectDir)lib64\libcurl.dll" "$(SolutionDir)Release\staging_x64\plug
 copy /Y "$(ProjectDir)lib64\libxml2.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_x64\package.ini'"
 if exist "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin"
-powershell -NoProfile -Command "Compress-Archive -Path '$(SolutionDir)Release\staging_x64\*' -DestinationPath '$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin'"</Command>
+powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_x64', '$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin')"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="core.c" />
     <ClCompile Include="plugin.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="core.h" />
     <ClInclude Include="include\curl\curl.h" />
     <ClInclude Include="include\libxml\HTMLparser.h" />
     <ClInclude Include="include\libxml\xpath.h" />

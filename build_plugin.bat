@@ -42,7 +42,7 @@ if errorlevel 1 goto :fail
 powershell -NoProfile -Command "(Get-Content '%ROOT%\ts3websitepreview\package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '%RELEASE%\staging_win32\package.ini'"
 if errorlevel 1 goto :fail
 if exist "%RELEASE%\ts3websitepreview_win32.ts3_plugin" del "%RELEASE%\ts3websitepreview_win32.ts3_plugin"
-powershell -NoProfile -Command "Compress-Archive -Path '%RELEASE%\staging_win32\*' -DestinationPath '%RELEASE%\ts3websitepreview_win32.ts3_plugin'"
+powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('%RELEASE%\staging_win32', '%RELEASE%\ts3websitepreview_win32.ts3_plugin')"
 if errorlevel 1 goto :fail
 
 echo.
@@ -54,7 +54,7 @@ if errorlevel 1 goto :fail
 powershell -NoProfile -Command "(Get-Content '%ROOT%\ts3websitepreview\package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '%RELEASE%\staging_x64\package.ini'"
 if errorlevel 1 goto :fail
 if exist "%RELEASE%\ts3websitepreview_win64.ts3_plugin" del "%RELEASE%\ts3websitepreview_win64.ts3_plugin"
-powershell -NoProfile -Command "Compress-Archive -Path '%RELEASE%\staging_x64\*' -DestinationPath '%RELEASE%\ts3websitepreview_win64.ts3_plugin'"
+powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('%RELEASE%\staging_x64', '%RELEASE%\ts3websitepreview_win64.ts3_plugin')"
 if errorlevel 1 goto :fail
 
 echo.

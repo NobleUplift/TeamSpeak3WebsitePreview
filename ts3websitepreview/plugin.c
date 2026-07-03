@@ -22,6 +22,7 @@
 #include "xpath.h"
 
 #include "plugin.h"
+#include "core.h"
 
 #ifdef _WIN32
 static HMODULE hLibcurl = NULL;
@@ -343,85 +344,6 @@ void ts3plugin_freeMemory(void* data) {
 
 /* Clientlib */
 
-struct MemoryStruct {
-  char *memory;
-  size_t size;
-};
-
-static size_t
-WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
-	size_t realsize = size * nmemb;
-	struct MemoryStruct *mem = (struct MemoryStruct *)userp;
- 
-	mem->memory = (char *) realloc(mem->memory, mem->size + realsize + 1);
-	if (mem->memory == NULL) {
-		/* out of memory! */
-		return 0;
-	}
- 
-	memcpy(&(mem->memory[mem->size]), contents, realsize);
-	mem->size += realsize;
-	mem->memory[mem->size] = 0;
- 
-	return realsize;
-}
-
-const char* GetURLFromMessage(const char* message) {
-	//char prefix[5];
-	const char *urlStart;
-	const char *urlEnd;
-	char *url;
-	size_t length;
-
-	/*strncpy(prefix, message, 5);
-	if (strcmp(prefix, "[URL]") == 0 || strcmp(prefix, "[url]") == 0) {
-		return NULL;
-	}*/
-	
-	urlStart = strstr(message, "[URL]"); // ((mailto\:|(news|(ht|f)tp(s?)|)\://|www.){1}\S+) http://regexlib.com/RETester.aspx?regexp_id=37
-	if (urlStart == NULL) {
-		urlStart = strstr(message, "[url]");
-	}
-
-	if (urlStart == NULL) {
-		return NULL;
-	}
-
-	/*
-	 * If the pointer to message is not the same as urlStart,
-	 * message does not begin with [URL]
-	 */
-	if (message != urlStart) {
-		return NULL;
-	}
-
-	urlStart += 5;
-
-	urlEnd = strstr(urlStart, "[/URL]");
-	if (urlEnd == NULL) {
-		urlEnd = strstr(urlStart, "[/url]");
-	}
-
-	if (urlEnd == NULL) {
-		return NULL;
-	}
-
-	/*
-	 * If [/URL] is not followed by null, there is a message after the URL
-	 */
-	if (urlEnd[6] != '\0') {
-		return NULL;
-	}
-
-	length = urlEnd - urlStart;
-
-	url = (char *) malloc(length + 1);
-	memcpy((void *) url, urlStart, length);
-	url[length] = 0;
-
-	return (const char *) url;
-}
-
 void GetHTML(const char* url, struct MemoryStruct *chunk, CURLcode *curlCode, const char *curlMessage) {
 	CURL *curl;
 
@@ -577,29 +499,7 @@ int ts3plugin_onTextMessageEvent(
 
 			title = og_title ? og_title : (html_title ? html_title : "(untitled)");
 
-#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
-			sprintf_s(newMessage, sizeof(newMessage), "\"%s\" <[URL]%s[/URL]>", title, url);
-			if (og_desc) {
-				strncat_s(newMessage, sizeof(newMessage), "\n", _TRUNCATE);
-				strncat_s(newMessage, sizeof(newMessage), og_desc, _TRUNCATE);
-			}
-			if (og_image) {
-				strncat_s(newMessage, sizeof(newMessage), "\n<img src=\"", _TRUNCATE);
-				strncat_s(newMessage, sizeof(newMessage), og_image, _TRUNCATE);
-				strncat_s(newMessage, sizeof(newMessage), "\">", _TRUNCATE);
-			}
-#else
-			snprintf(newMessage, sizeof(newMessage), "\"%s\" <[URL]%s[/URL]>", title, url);
-			if (og_desc) {
-				strncat(newMessage, "\n", sizeof(newMessage) - strlen(newMessage) - 1);
-				strncat(newMessage, og_desc, sizeof(newMessage) - strlen(newMessage) - 1);
-			}
-			if (og_image) {
-				strncat(newMessage, "\n<img src=\"", sizeof(newMessage) - strlen(newMessage) - 1);
-				strncat(newMessage, og_image, sizeof(newMessage) - strlen(newMessage) - 1);
-				strncat(newMessage, "\">", sizeof(newMessage) - strlen(newMessage) - 1);
-			}
-#endif
+			BuildPreviewMessage(title, url, og_desc, og_image, newMessage, sizeof(newMessage));
 
 			if (pfn_xmlFree) {
 				if (og_title)   pfn_xmlFree(og_title);
