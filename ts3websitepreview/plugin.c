@@ -88,6 +88,11 @@ static char* pluginID = NULL;
 
 static int sentSelfMessage = 0;
 
+/* Track the last URL we sent formatted output for, to suppress the server echo
+ * of the original [URL]...[/URL] message firing onTextMessageEvent a second time. */
+static char lastSentURL[2048] = "";
+static DWORD lastSentURLTick = 0;
+
 #ifdef _WIN32
 /* Helper function to convert wchar_T to Utf-8 encoded strings on Windows */
 static int wcharToUtf8(const wchar_t* str, char** result) {
@@ -200,13 +205,22 @@ int ts3plugin_init() {
 			if (lastSlash) {
 				lastSlash[1] = L'\0';
 				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview\\");
+				{
+					char narrowDir[MAX_PATH];
+					char logMsg[MAX_PATH + 32];
+					WideCharToMultiByte(CP_UTF8, 0, dllDir, -1, narrowDir, MAX_PATH, NULL, NULL);
+					snprintf(logMsg, sizeof(logMsg), "Loading deps from: %s", narrowDir);
+					ts3Functions.logMessage(logMsg, LogLevel_INFO, "Plugin", 0);
+				}
 
 				/* Load libcurl.dll — LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR lets its own deps find each other */
 				wcscpy_s(dllPath, MAX_PATH, dllDir);
 				wcscat_s(dllPath, MAX_PATH, L"libcurl.dll");
 				hLibcurl = LoadLibraryExW(dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 				if (!hLibcurl) {
-					ts3Functions.logMessage("Could not load libcurl.dll", LogLevel_ERROR, "Plugin", 0);
+					char errMsg[128];
+					snprintf(errMsg, sizeof(errMsg), "Could not load libcurl.dll (error %lu)", GetLastError());
+					ts3Functions.logMessage(errMsg, LogLevel_ERROR, "Plugin", 0);
 					return 1;
 				}
 				pfn_curl_global_init   = (pfnCurlGlobalInit_t)  GetProcAddress(hLibcurl, "curl_global_init");
@@ -222,7 +236,9 @@ int ts3plugin_init() {
 				wcscat_s(dllPath, MAX_PATH, L"libxml2.dll");
 				hLibxml2 = LoadLibraryExW(dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 				if (!hLibxml2) {
-					ts3Functions.logMessage("Could not load libxml2.dll", LogLevel_ERROR, "Plugin", 0);
+					char errMsg[128];
+					snprintf(errMsg, sizeof(errMsg), "Could not load libxml2.dll (error %lu)", GetLastError());
+					ts3Functions.logMessage(errMsg, LogLevel_ERROR, "Plugin", 0);
 					FreeLibrary(hLibcurl); hLibcurl = NULL;
 					return 1;
 				}
@@ -238,6 +254,7 @@ int ts3plugin_init() {
 					pfn_xmlFree = pVar ? *pVar : NULL;
 				}
 				pfn_xmlXPathFreeContext = (pfnXmlXPathFreeContext_t)GetProcAddress(hLibxml2, "xmlXPathFreeContext");
+				ts3Functions.logMessage("libcurl and libxml2 loaded OK", LogLevel_INFO, "Plugin", 0);
 			}
 		}
 	}
@@ -455,6 +472,18 @@ int ts3plugin_onTextMessageEvent(
 				return 0;
 			}
 
+			/* Suppress the server echo of a URL we already processed within the last 30 s.
+			 * TS3 echoes the original [URL]...[/URL] message back from the server after we
+			 * have already handled it, which would otherwise trigger a duplicate fetch. */
+			{
+				DWORD now = GetTickCount();
+				if (strcmp(url, lastSentURL) == 0 && (now - lastSentURLTick) < 30000U) {
+					free((void*)url);
+					free(chunk.memory);
+					return 1;
+				}
+			}
+
 			ts3Functions.logMessage("Opening URL: ", LogLevel_INFO, "Plugin", serverConnectionHandlerID);
 			ts3Functions.logMessage(url, LogLevel_INFO, "Plugin", serverConnectionHandlerID);
 
@@ -475,6 +504,7 @@ int ts3plugin_onTextMessageEvent(
 			doc = pfn_htmlReadMemory(chunk.memory, chunk.size, url, NULL, HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
 			if (!doc) {
 				ts3Functions.logMessage("Could not read HTML document from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
+				free((void*)url);
 				free(chunk.memory);
 				return 0;
 			}
@@ -510,20 +540,22 @@ int ts3plugin_onTextMessageEvent(
 			pfn_xmlFreeDoc(doc);
 			free(chunk.memory);
 			
+			strncpy_s(lastSentURL, sizeof(lastSentURL), url, _TRUNCATE);
+			free((void*)url);
+			lastSentURLTick = GetTickCount();
 			sentSelfMessage = 1;
 			if (ts3Functions.requestSendChannelTextMsg(serverConnectionHandlerID, newMessage, channelID, NULL) != ERROR_ok) {
 				ts3Functions.logMessage("Error requesting send text message", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
 			}
-			// Caused infininte loop, kept going to this block of code:
-			//sentSelfMessage = 0;
 			return 1;
 		} else {
+			/* First echo of our formatted message — display it, then clear the flag.
+			 * If the server sends a second echo it will fail the URL check and also
+			 * return 0, but that is harmless (same message, idempotent display). */
 			sentSelfMessage = 0;
-			return 1;
+			return 0;
 		}
 	} else {
-		// Would have caused bug where a message sent by another client at the same time would have inversed the flow of client messages
-		//sentSelfMessage = 0;
-		return 0;  /* 0 = handle normally, 1 = client will ignore the text message */
+		return 0;
 	}
 }
