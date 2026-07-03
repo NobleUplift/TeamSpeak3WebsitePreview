@@ -167,6 +167,7 @@
       <Command>if not exist "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\" mkdir "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib\libcurl.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib\libxml2.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
+copy /Y "$(ProjectDir)lib\iconv.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\libiconv.dll"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_win32\package.ini'"
 if exist "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin"
 powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_win32', '$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin')"</Command>
@@ -199,6 +200,7 @@ powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSy
       <Command>if not exist "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\" mkdir "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib64\libcurl.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib64\libxml2.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
+copy /Y "$(ProjectDir)lib64\iconv.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\libiconv.dll"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_x64\package.ini'"
 if exist "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin"
 powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_x64', '$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin')"</Command>

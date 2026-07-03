@@ -61,19 +61,19 @@ ts3websitepreview_win64.ts3_plugin\
 - Win32 also needs `zlib1.dll` in the subdirectory if the libcurl/libxml2 builds require it (x64 builds linked it statically).
 - `libiconv.dll` must be named exactly `libiconv.dll`, not `iconv.dll` — libxml2.dll imports it by that exact name.
 
-The `libiconv` project in the solution builds to this subdirectory automatically for Release configs.
+The post-build event copies `lib/iconv.dll` (Win32) or `lib64/iconv.dll` (x64) as `libiconv.dll` into the staging directory — no separate build step is needed. The `libiconv` project remains in the solution for reference but is excluded from all solution builds.
 
 ## Tests
 
-`ts3websitepreviewtest/` is a standalone console app (not an automated test framework) that exercises the same URL extraction → HTTP fetch → XPath title parse pipeline against a hardcoded YouTube URL. Build and run the `ts3websitepreviewtest` project directly; it prints results and pauses.
+`ts3websitepreviewtest/` is a Unity-based unit test harness. Build and run it as a console app; it prints pass/fail for each test and exits with 0 on success. Tests cover `GetURLFromMessage`, `WriteMemoryCallback`, `BuildPreviewMessage`, and OGP/XPath parsing (23 tests total).
 
 ## Architecture
 
-**Three projects in the solution:**
+**Projects in the solution:**
 
 - **ts3websitepreview** — the plugin DLL. Implements the TeamSpeak 3 plugin API (API version 26). The only event handler that matters is `ts3plugin_onTextMessageEvent()` in `plugin.c`.
-- **libiconv** — vendored character encoding library, compiled as its own DLL. Not called directly from `plugin.c`; it is an indirect dependency of libxml2.
-- **ts3websitepreviewtest** — standalone console app mirroring plugin logic for manual testing.
+- **ts3websitepreviewtest** — Unity unit test harness.
+- **libiconv** — source project retained for reference; not built by default. The prebuilt `lib/iconv.dll` / `lib64/iconv.dll` binaries (sourced externally, gitignored) are used directly.
 
 **Message processing flow** (`plugin.c:ts3plugin_onTextMessageEvent`):
 
