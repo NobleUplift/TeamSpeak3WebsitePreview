@@ -2,7 +2,7 @@
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
 #include <windows.h>
 #include <tchar.h>
-//#include <delayimp.h>
+#include <delayimp.h>
 #endif
 
 #include <stdio.h>
@@ -152,32 +152,34 @@ int ts3plugin_init() {
 	ts3Functions.logMessage("Plugin path: ", LogLevel_INFO, "Plugin", 0);
 	ts3Functions.logMessage(pluginPath, LogLevel_INFO, "Plugin", 0);
 
-/*#ifdef _WIN32
-	if (SetDllDirectory(L".\\plugins\\ts3websitepreview") == 0) {
-		ts3Functions.logMessage("Failed to set DLL directory.", LogLevel_ERROR, "Plugin", 0);
-		return 1;
-	}
+#ifdef _WIN32
+	{
+		wchar_t dllDir[MAX_PATH];
+		HMODULE hm = NULL;
+		if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+		                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		                       (LPCWSTR)(void*)ts3plugin_init, &hm) &&
+		    GetModuleFileNameW(hm, dllDir, MAX_PATH)) {
+			wchar_t* lastSlash = wcsrchr(dllDir, L'\\');
+			if (lastSlash) {
+				lastSlash[1] = L'\0';
+				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview");
+				SetDllDirectory(dllDir);
+			}
+		}
 
-	__try {
-		if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
-			ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
+		__try {
+			if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
+				ts3Functions.logMessage("Could not load libcurl.dll", LogLevel_ERROR, "Plugin", 0);
+				return 1;
+			}
+		} __except(EXCEPTION_EXECUTE_HANDLER) {
+			ts3Functions.logMessage("Exception loading libcurl.dll", LogLevel_ERROR, "Plugin", 0);
 			return 1;
 		}
-	} __except(FACILITY_VISUALCPP) {
-		ts3Functions.logMessage("Could not load curl.", LogLevel_ERROR, "Plugin", 0);
-		return 1;
-	}
 
-	__try {
-		if (FAILED(__HrLoadAllImportsForDll("libxml2.dll"))) {
-			ts3Functions.logMessage("Could not load libxml.", LogLevel_ERROR, "Plugin", 0);
-			return 1;
-		}
-	} __except(FACILITY_VISUALCPP) {
-		ts3Functions.logMessage("Could not load libxml2.", LogLevel_ERROR, "Plugin", 0);
-		return 1;
 	}
-#endif*/
+#endif
 
     return 0;  /* 0 = success, 1 = failure, -2 = failure but client will not show a "failed to load" warning */
 	/* -2 is a very special case and should only be used if a plugin displays a dialog (e.g. overlay) asking the user to disable
