@@ -137,7 +137,6 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <AdditionalDependencies>./lib64/libcurl.lib;./lib64/libxml2.lib;./lib64/iconv.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libcurl.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -162,8 +161,7 @@
       </DataExecutionPrevention>
       <TargetMachine>MachineX86</TargetMachine>
       <AdditionalLibraryDirectories>.\lib</AdditionalLibraryDirectories>
-      <AdditionalDependencies>lib\libcurl.lib;lib\libxml2.lib;lib\iconv.lib;delayimp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libcurl.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <AdditionalDependencies>lib\libcurl.lib;lib\libxml2.lib;lib\iconv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -187,8 +185,7 @@
       <DataExecutionPrevention>
       </DataExecutionPrevention>
       <AdditionalLibraryDirectories>.\lib64</AdditionalLibraryDirectories>
-      <AdditionalDependencies>lib64\libcurl.lib;lib64\libxml2.lib;lib64\iconv.lib;delayimp.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libcurl.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <AdditionalDependencies>lib64\libcurl.lib;lib64\libxml2.lib;lib64\iconv.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

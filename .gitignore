@@ -1,3 +1,8 @@
+# Claude
+.claude
+!.claude/settings.json
+!.claude/plans
+
 # TS3 Website Preview Exclusions
 */include/*
 *.dll

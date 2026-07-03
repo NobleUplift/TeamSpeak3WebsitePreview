@@ -2,7 +2,6 @@
 #pragma warning (disable : 4100)  /* Disable Unreferenced parameter warning */
 #include <windows.h>
 #include <tchar.h>
-#include <delayimp.h>
 #endif
 
 #include <stdio.h>
@@ -23,6 +22,39 @@
 #include "xpath.h"
 
 #include "plugin.h"
+
+#ifdef _WIN32
+static HMODULE hLibcurl = NULL;
+static HMODULE hLibxml2 = NULL;
+typedef CURLcode (*pfnCurlGlobalInit_t)(long);
+typedef CURL* (*pfnCurlEasyInit_t)(void);
+typedef CURLcode (*pfnCurlEasySetopt_t)(CURL*, CURLoption, ...);
+typedef CURLcode (*pfnCurlEasyPerform_t)(CURL*);
+typedef const char* (*pfnCurlEasyStrerror_t)(CURLcode);
+typedef void (*pfnCurlEasyCleanup_t)(CURL*);
+typedef void (*pfnCurlGlobalCleanup_t)(void);
+static pfnCurlGlobalInit_t pfn_curl_global_init;
+static pfnCurlEasyInit_t pfn_curl_easy_init;
+static pfnCurlEasySetopt_t pfn_curl_easy_setopt;
+static pfnCurlEasyPerform_t pfn_curl_easy_perform;
+static pfnCurlEasyStrerror_t pfn_curl_easy_strerror;
+static pfnCurlEasyCleanup_t pfn_curl_easy_cleanup;
+static pfnCurlGlobalCleanup_t pfn_curl_global_cleanup;
+typedef htmlDocPtr (*pfnHtmlReadMemory_t)(const char*, int, const char*, const char*, int);
+typedef xmlXPathContextPtr (*pfnXmlXPathNewContext_t)(xmlDocPtr);
+typedef xmlXPathObjectPtr (*pfnXmlXPathEvalExpression_t)(const xmlChar*, xmlXPathContextPtr);
+typedef void (*pfnXmlXPathFreeObject_t)(xmlXPathObjectPtr);
+typedef xmlChar* (*pfnXmlNodeListGetString_t)(xmlDocPtr, xmlNodePtr, int);
+typedef void (*pfnXmlFree_t)(void*);
+typedef void (*pfnXmlFreeDoc_t)(xmlDocPtr);
+static pfnHtmlReadMemory_t pfn_htmlReadMemory;
+static pfnXmlXPathNewContext_t pfn_xmlXPathNewContext;
+static pfnXmlXPathEvalExpression_t pfn_xmlXPathEvalExpression;
+static pfnXmlXPathFreeObject_t pfn_xmlXPathFreeObject;
+static pfnXmlNodeListGetString_t pfn_xmlNodeListGetString;
+static pfnXmlFree_t pfn_xmlFree;
+static pfnXmlFreeDoc_t pfn_xmlFreeDoc;
+#endif
 
 /*#ifdef _WIN32
 #pragma comment(lib, "libcurl")
@@ -155,6 +187,7 @@ int ts3plugin_init() {
 #ifdef _WIN32
 	{
 		wchar_t dllDir[MAX_PATH];
+		wchar_t dllPath[MAX_PATH];
 		HMODULE hm = NULL;
 		if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
 		                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -163,21 +196,46 @@ int ts3plugin_init() {
 			wchar_t* lastSlash = wcsrchr(dllDir, L'\\');
 			if (lastSlash) {
 				lastSlash[1] = L'\0';
-				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview");
-				SetDllDirectory(dllDir);
+				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview\\");
+
+				/* Load libcurl.dll — LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR lets its own deps find each other */
+				wcscpy_s(dllPath, MAX_PATH, dllDir);
+				wcscat_s(dllPath, MAX_PATH, L"libcurl.dll");
+				hLibcurl = LoadLibraryExW(dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+				if (!hLibcurl) {
+					ts3Functions.logMessage("Could not load libcurl.dll", LogLevel_ERROR, "Plugin", 0);
+					return 1;
+				}
+				pfn_curl_global_init   = (pfnCurlGlobalInit_t)  GetProcAddress(hLibcurl, "curl_global_init");
+				pfn_curl_easy_init     = (pfnCurlEasyInit_t)    GetProcAddress(hLibcurl, "curl_easy_init");
+				pfn_curl_easy_setopt   = (pfnCurlEasySetopt_t)  GetProcAddress(hLibcurl, "curl_easy_setopt");
+				pfn_curl_easy_perform  = (pfnCurlEasyPerform_t) GetProcAddress(hLibcurl, "curl_easy_perform");
+				pfn_curl_easy_strerror = (pfnCurlEasyStrerror_t)GetProcAddress(hLibcurl, "curl_easy_strerror");
+				pfn_curl_easy_cleanup  = (pfnCurlEasyCleanup_t) GetProcAddress(hLibcurl, "curl_easy_cleanup");
+				pfn_curl_global_cleanup= (pfnCurlGlobalCleanup_t)GetProcAddress(hLibcurl, "curl_global_cleanup");
+
+				/* Load libxml2.dll — LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR finds libiconv.dll alongside it */
+				wcscpy_s(dllPath, MAX_PATH, dllDir);
+				wcscat_s(dllPath, MAX_PATH, L"libxml2.dll");
+				hLibxml2 = LoadLibraryExW(dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+				if (!hLibxml2) {
+					ts3Functions.logMessage("Could not load libxml2.dll", LogLevel_ERROR, "Plugin", 0);
+					FreeLibrary(hLibcurl); hLibcurl = NULL;
+					return 1;
+				}
+				pfn_htmlReadMemory         = (pfnHtmlReadMemory_t)       GetProcAddress(hLibxml2, "htmlReadMemory");
+				pfn_xmlXPathNewContext     = (pfnXmlXPathNewContext_t)    GetProcAddress(hLibxml2, "xmlXPathNewContext");
+				pfn_xmlXPathEvalExpression = (pfnXmlXPathEvalExpression_t)GetProcAddress(hLibxml2, "xmlXPathEvalExpression");
+				pfn_xmlXPathFreeObject     = (pfnXmlXPathFreeObject_t)    GetProcAddress(hLibxml2, "xmlXPathFreeObject");
+				pfn_xmlNodeListGetString   = (pfnXmlNodeListGetString_t)  GetProcAddress(hLibxml2, "xmlNodeListGetString");
+				pfn_xmlFreeDoc             = (pfnXmlFreeDoc_t)            GetProcAddress(hLibxml2, "xmlFreeDoc");
+				/* xmlFree is a data symbol (function pointer variable) — must dereference to get the free function */
+				{
+					pfnXmlFree_t* pVar = (pfnXmlFree_t*)GetProcAddress(hLibxml2, "xmlFree");
+					pfn_xmlFree = pVar ? *pVar : NULL;
+				}
 			}
 		}
-
-		__try {
-			if (FAILED(__HrLoadAllImportsForDll("libcurl.dll"))) {
-				ts3Functions.logMessage("Could not load libcurl.dll", LogLevel_ERROR, "Plugin", 0);
-				return 1;
-			}
-		} __except(EXCEPTION_EXECUTE_HANDLER) {
-			ts3Functions.logMessage("Exception loading libcurl.dll", LogLevel_ERROR, "Plugin", 0);
-			return 1;
-		}
-
 	}
 #endif
 
@@ -203,6 +261,11 @@ void ts3plugin_shutdown() {
 		free(pluginID);
 		pluginID = NULL;
 	}
+
+#ifdef _WIN32
+	if (hLibxml2) { FreeLibrary(hLibxml2); hLibxml2 = NULL; }
+	if (hLibcurl)  { FreeLibrary(hLibcurl);  hLibcurl  = NULL; }
+#endif
 }
 
 /****************************** Optional functions ********************************/
@@ -359,28 +422,28 @@ const char* GetURLFromMessage(const char* message) {
 void GetHTML(const char* url, struct MemoryStruct *chunk, CURLcode *curlCode, const char *curlMessage) {
 	CURL *curl;
 
-	curl_global_init(CURL_GLOBAL_ALL);
-	curl = curl_easy_init();
+	pfn_curl_global_init(CURL_GLOBAL_ALL);
+	curl = pfn_curl_easy_init();
 	if (curl) {
-		curl_easy_setopt(curl, CURLOPT_URL, url);
-		curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) chunk);
-		curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl/1.0");
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
-		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
-		*curlCode = curl_easy_perform(curl);
+		pfn_curl_easy_setopt(curl, CURLOPT_URL, url);
+		pfn_curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+		pfn_curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+		pfn_curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *) chunk);
+		pfn_curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl/1.0");
+		pfn_curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		pfn_curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+		*curlCode = pfn_curl_easy_perform(curl);
 
 		if (*curlCode != CURLE_OK) {
 			//curl_easy_cleanup(curl);
 			//free(chunk.memory);
 			//return NULL;
-			curlMessage = curl_easy_strerror(*curlCode);
+			curlMessage = pfn_curl_easy_strerror(*curlCode);
 		}
 
-		curl_easy_cleanup(curl);
+		pfn_curl_easy_cleanup(curl);
 		//free(chunk.memory);
-		curl_global_cleanup();
+		pfn_curl_global_cleanup();
 
 	} else {
 		*curlCode = CURLE_LIBRARY_NOT_FOUND;
@@ -466,25 +529,25 @@ int ts3plugin_onTextMessageEvent(
 #endif
 			ts3Functions.logMessage(errorMessage, LogLevel_INFO, "Plugin", serverConnectionHandlerID);
 
-			doc = htmlReadMemory(chunk.memory, chunk.size, url, NULL, HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
+			doc = pfn_htmlReadMemory(chunk.memory, chunk.size, url, NULL, HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
 			if (!doc) {
 				ts3Functions.logMessage("Could not read HTML document from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
 				free(chunk.memory);
 				return 0;
 			}
 
-			context = xmlXPathNewContext(doc);
-			result = xmlXPathEvalExpression("/html/head/title", context);
+			context = pfn_xmlXPathNewContext(doc);
+			result = pfn_xmlXPathEvalExpression("/html/head/title", context);
 
 			if (xmlXPathNodeSetIsEmpty(result->nodesetval)) {
 				ts3Functions.logMessage("Could not read HTML node set from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
-				xmlXPathFreeObject(result);
+				pfn_xmlXPathFreeObject(result);
 				free(chunk.memory);
 				return 0;
 			}
 
 			for (i=0; i < result->nodesetval->nodeNr; i++) {
-				keyword = (char *) xmlNodeListGetString(doc, result->nodesetval->nodeTab[i]->xmlChildrenNode, 1);
+				keyword = (char *) pfn_xmlNodeListGetString(doc, result->nodesetval->nodeTab[i]->xmlChildrenNode, 1);
 				continue;
 				//printf("keyword: %s\n", keyword);
 			}
@@ -503,9 +566,9 @@ int ts3plugin_onTextMessageEvent(
 			strcat(newMessage, ">");
 #endif
 			
-			xmlFree(keyword);
-			xmlXPathFreeObject(result);
-			xmlFreeDoc(doc);
+			if (pfn_xmlFree) pfn_xmlFree(keyword);
+			pfn_xmlXPathFreeObject(result);
+			pfn_xmlFreeDoc(doc);
 			free(chunk.memory);
 			
 			sentSelfMessage = 1;
