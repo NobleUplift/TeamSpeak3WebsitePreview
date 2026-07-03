@@ -580,7 +580,7 @@ int ts3plugin_onTextMessageEvent(
 			return 1;
 		} else {
 			sentSelfMessage = 0;
-			return 0;
+			return 1;
 		}
 	} else {
 		// Would have caused bug where a message sent by another client at the same time would have inversed the flow of client messages
