@@ -144,6 +144,24 @@ void GetHTML(const char* url, struct MemoryStruct *chunk, CURLcode *curlCode, co
 	}
 }
 
+static char* GetOGProperty(htmlDocPtr doc, xmlXPathContextPtr context, const char* property) {
+	char xpath[128];
+	xmlXPathObjectPtr result;
+	char* value = NULL;
+
+#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
+	sprintf_s(xpath, sizeof(xpath), "//meta[@property='%s']/@content", property);
+#else
+	snprintf(xpath, sizeof(xpath), "//meta[@property='%s']/@content", property);
+#endif
+	result = xmlXPathEvalExpression((const xmlChar*)xpath, context);
+	if (result && !xmlXPathNodeSetIsEmpty(result->nodesetval)) {
+		value = (char*)xmlNodeListGetString(doc, result->nodesetval->nodeTab[0]->children, 1);
+	}
+	if (result) xmlXPathFreeObject(result);
+	return value;
+}
+
 int _tmain(int argc, _TCHAR* argv[])
 {
     char message[100] = "[URL]https://www.youtube.com/watch?v=wCRStRWMdWM#t=39s[/URL]\0";
@@ -155,22 +173,23 @@ int _tmain(int argc, _TCHAR* argv[])
 	htmlDocPtr doc;
 	xmlXPathContextPtr context;
 	xmlXPathObjectPtr result;
-	char * keyword;
+	char* og_title = NULL;
+	char* og_desc  = NULL;
+	char* og_image = NULL;
+	char* html_title = NULL;
+	const char* title;
 
-	int i;
-	char newMessage[1024];
+	char newMessage[4096];
 	char errorMessage[128];
 	const char* url;
 
-    //printf("Enter your message: ");
-    //fgets(message, 100, stdin);
     printf("Your Message is: %s\n", message);
 
 	system("pause");
 
 	url = GetURLFromMessage(message);
-			
-	chunk.memory = (char *) malloc(1);  /* will be grown as needed by the realloc above */ 
+
+	chunk.memory = (char *) malloc(1);  /* will be grown as needed by the realloc above */
 	chunk.size = 0;    /* no data at this point */
 
 	if (url == NULL) {
@@ -180,83 +199,86 @@ int _tmain(int argc, _TCHAR* argv[])
 		return 0;
 	}
 
-	printf("URL: ");
-	printf(url);
-	printf("\n");
-
-	//ts3Functions.logMessage("Opening URL: ", LogLevel_INFO, "Plugin", serverConnectionHandlerID);
-	//ts3Functions.logMessage(url, LogLevel_INFO, "Plugin", serverConnectionHandlerID);
+	printf("URL: %s\n", url);
 
 	GetHTML(url, &chunk, &curlCode, curlMessage);
-	
-	printf("curlMessage: ");
-	printf(curlMessage);
-	printf("\n");
 
-	//if (curlCode != 0) {
-	//	ts3Functions.logMessage("cURL Error: ", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
-	//	ts3Functions.logMessage(curlMessage, LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
-	//}
+	printf("curlMessage: %s\n", curlMessage);
 
 #if defined(_WIN32) || defined(WIN32) || defined(_WIN64) || defined(WIN64)
-	sprintf_s(errorMessage, 128, "Reading HTML file that is the following bytes long: %d", chunk.size);
+	sprintf_s(errorMessage, sizeof(errorMessage), "Reading HTML file that is the following bytes long: %d", (int)chunk.size);
 #else
-	sprintf(errorMessage, "Reading HTML file that is the following bytes long: %d", chunk.size);
+	snprintf(errorMessage, sizeof(errorMessage), "Reading HTML file that is the following bytes long: %d", (int)chunk.size);
 #endif
-	//ts3Functions.logMessage(errorMessage, LogLevel_INFO, "Plugin", serverConnectionHandlerID);
+	printf("%s\n", errorMessage);
 
 	doc = htmlReadMemory(chunk.memory, chunk.size, url, NULL, HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
 	if (!doc) {
 		printf("Could not read HTML document from memory\n");
-
-	system("pause");
-		//ts3Functions.logMessage("Could not read HTML document from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
+		system("pause");
 		free(chunk.memory);
 		return 0;
 	}
 
 	context = xmlXPathNewContext(doc);
-	result = xmlXPathEvalExpression("/html/head/title", context);
 
-	if (xmlXPathNodeSetIsEmpty(result->nodesetval)) {
-		printf("Could not read HTML node set from memory\n");
-		system("pause");
-		//ts3Functions.logMessage("Could not read HTML node set from memory", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
-		xmlXPathFreeObject(result);
-		free(chunk.memory);
-		return 0;
+	og_title = GetOGProperty(doc, context, "og:title");
+	og_desc  = GetOGProperty(doc, context, "og:description");
+	og_image = GetOGProperty(doc, context, "og:image");
+
+	printf("og:title       = %s\n", og_title ? og_title : "(none)");
+	printf("og:description = %s\n", og_desc  ? og_desc  : "(none)");
+	printf("og:image       = %s\n", og_image ? og_image : "(none)");
+
+	/* Fall back to <title> element if no og:title */
+	if (!og_title) {
+		result = xmlXPathEvalExpression("/html/head/title", context);
+		if (result && !xmlXPathNodeSetIsEmpty(result->nodesetval)) {
+			html_title = (char*)xmlNodeListGetString(doc,
+				result->nodesetval->nodeTab[result->nodesetval->nodeNr - 1]->xmlChildrenNode, 1);
+		}
+		if (result) xmlXPathFreeObject(result);
 	}
 
-	for (i=0; i < result->nodesetval->nodeNr; i++) {
-		keyword = (char *) xmlNodeListGetString(doc, result->nodesetval->nodeTab[i]->xmlChildrenNode, 1);
-		continue;
-		//printf("keyword: %s\n", keyword);
-	}
+	xmlXPathFreeContext(context);
+
+	title = og_title ? og_title : (html_title ? html_title : "(untitled)");
+	printf("title (used)   = %s\n", title);
 
 #if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
-	strcpy_s(newMessage, 1024, "\"");
-	strcat_s(newMessage, 1024, (const char *) keyword);
-	strcat_s(newMessage, 1024, "\" <[URL]");
-	strcat_s(newMessage, 1024, url);
-	strcat_s(newMessage, 1024, "[/URL]>");
+	sprintf_s(newMessage, sizeof(newMessage), "\"%s\" <[URL]%s[/URL]>", title, url);
+	if (og_desc) {
+		strncat_s(newMessage, sizeof(newMessage), "\n", _TRUNCATE);
+		strncat_s(newMessage, sizeof(newMessage), og_desc, _TRUNCATE);
+	}
+	if (og_image) {
+		strncat_s(newMessage, sizeof(newMessage), "\n<img src=\"", _TRUNCATE);
+		strncat_s(newMessage, sizeof(newMessage), og_image, _TRUNCATE);
+		strncat_s(newMessage, sizeof(newMessage), "\">", _TRUNCATE);
+	}
 #else
-	strcpy(newMessage, "\"");
-	strcat(newMessage, (const char *) keyword);
-	strcat(newMessage, "\" <");
-	strcat(newMessage, message);
-	strcat(newMessage, ">");
+	snprintf(newMessage, sizeof(newMessage), "\"%s\" <[URL]%s[/URL]>", title, url);
+	if (og_desc) {
+		strncat(newMessage, "\n", sizeof(newMessage) - strlen(newMessage) - 1);
+		strncat(newMessage, og_desc, sizeof(newMessage) - strlen(newMessage) - 1);
+	}
+	if (og_image) {
+		strncat(newMessage, "\n<img src=\"", sizeof(newMessage) - strlen(newMessage) - 1);
+		strncat(newMessage, og_image, sizeof(newMessage) - strlen(newMessage) - 1);
+		strncat(newMessage, "\">", sizeof(newMessage) - strlen(newMessage) - 1);
+	}
 #endif
-			
-	//xmlFree(keyword);
-	xmlXPathFreeObject(result);
+
+	xmlFree(og_title);
+	xmlFree(og_desc);
+	xmlFree(og_image);
+	xmlFree(html_title);
 	xmlFreeDoc(doc);
 	free(chunk.memory);
 
-	printf("New message: ");
-	printf(newMessage);
-	printf("\n");
+	printf("\nNew message:\n%s\n", newMessage);
 
-	printf("End\n");
+	printf("\nEnd\n");
 	system("pause");
 
     return 1;
