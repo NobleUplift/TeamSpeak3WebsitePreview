@@ -63,6 +63,16 @@ ts3websitepreview_win64.ts3_plugin\
 
 The post-build event copies `lib/iconv.dll` (Win32) or `lib64/iconv.dll` (x64) as `libiconv.dll` into the staging directory — no separate build step is needed. The `libiconv` project remains in the solution for reference but is excluded from all solution builds.
 
+**ZIP format requirements for `package_inst.exe`:** The `.ts3_plugin` file is a ZIP archive. TS3's installer (`package_inst.exe`) is strict about two things:
+
+1. **Entry names must use forward slashes** (`plugins/ts3websitepreview/libcurl.dll`), not backslashes. `ZipFile.CreateFromDirectory` on Windows produces backslash separators, which causes `package_inst.exe` to fail extraction of nested paths (files land in the wrong place or are silently skipped). Use `ZipArchive` with a manual entry-name loop and `.Replace('\','/')`.
+2. **Compression must be standard Deflate.** LZMA, LZMA2, and Deflate64 are not supported. `CompressionLevel.Optimal` in `System.IO.Compression` produces standard Deflate and works correctly.
+
+3. **Entry names must not double-nest the root folder.** Zip the *contents* of the staging directory, not the directory itself — `package_inst.exe` expects `plugins/...` at the zip root, not `staging_x64/plugins/...`. The `ZipArchive` loop strips the staging path prefix correctly.
+4. **Filenames must be strict ASCII alphanumeric.** The extraction engine fails silently (0-byte output) on entries containing Umlauts (`ä`, `ö`, `ü`) or other non-ASCII characters; keep all file and folder names to `[A-Za-z0-9_.-]`.
+
+The post-build event and `build_plugin.bat` both use the `ZipArchive` approach and filter to `.dll`/`.ini` files only, which also excludes linker artifacts (`.exp`, `.lib`) that `ZipFile.CreateFromDirectory` would otherwise include.
+
 **Reinstalling while TS3 is running produces 0-byte DLLs.** The zip entries are correct (verified by opening the archive), but TS3 cannot overwrite in-use DLLs during extraction, so it truncates them to 0 bytes instead. The symptom is `LoadLibrary error: 193` (`ERROR_BAD_EXE_FORMAT`) for the dependency DLLs. Fix: close TS3 completely, then reinstall the `.ts3_plugin` file, or manually copy the files from `Release\staging_x64\plugins\ts3websitepreview\` into `%APPDATA%\TS3Client\plugins\ts3websitepreview\`.
 
 ## Tests
