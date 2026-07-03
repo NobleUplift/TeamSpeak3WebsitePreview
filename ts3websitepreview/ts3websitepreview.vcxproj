@@ -169,8 +169,7 @@ copy /Y "$(ProjectDir)lib\libcurl.dll" "$(SolutionDir)Release\staging_win32\plug
 copy /Y "$(ProjectDir)lib\libxml2.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib\iconv.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\libiconv.dll"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_win32\package.ini'"
-if exist "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin"
-powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_win32', '$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin')"</Command>
+powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='$(SolutionDir)Release\staging_win32'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -202,8 +201,7 @@ copy /Y "$(ProjectDir)lib64\libcurl.dll" "$(SolutionDir)Release\staging_x64\plug
 copy /Y "$(ProjectDir)lib64\libxml2.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib64\iconv.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\libiconv.dll"
 powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_x64\package.ini'"
-if exist "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin" del "$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin"
-powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('$(SolutionDir)Release\staging_x64', '$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin')"</Command>
+powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='$(SolutionDir)Release\staging_x64'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

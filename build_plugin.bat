@@ -32,8 +32,7 @@ copy /Y "%ROOT%\ts3websitepreview\lib\iconv.dll" "%RELEASE%\staging_win32\plugin
 if errorlevel 1 goto :fail
 powershell -NoProfile -Command "(Get-Content '%ROOT%\ts3websitepreview\package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '%RELEASE%\staging_win32\package.ini'"
 if errorlevel 1 goto :fail
-if exist "%RELEASE%\ts3websitepreview_win32.ts3_plugin" del "%RELEASE%\ts3websitepreview_win32.ts3_plugin"
-powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('%RELEASE%\staging_win32', '%RELEASE%\ts3websitepreview_win32.ts3_plugin')"
+powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='%RELEASE%\ts3websitepreview_win32.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='%RELEASE%\staging_win32'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"
 if errorlevel 1 goto :fail
 
 echo.
@@ -46,8 +45,7 @@ copy /Y "%ROOT%\ts3websitepreview\lib64\iconv.dll" "%RELEASE%\staging_x64\plugin
 if errorlevel 1 goto :fail
 powershell -NoProfile -Command "(Get-Content '%ROOT%\ts3websitepreview\package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '%RELEASE%\staging_x64\package.ini'"
 if errorlevel 1 goto :fail
-if exist "%RELEASE%\ts3websitepreview_win64.ts3_plugin" del "%RELEASE%\ts3websitepreview_win64.ts3_plugin"
-powershell -NoProfile -Command "Add-Type -Assembly 'System.IO.Compression.FileSystem'; [System.IO.Compression.ZipFile]::CreateFromDirectory('%RELEASE%\staging_x64', '%RELEASE%\ts3websitepreview_win64.ts3_plugin')"
+powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='%RELEASE%\ts3websitepreview_win64.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='%RELEASE%\staging_x64'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"
 if errorlevel 1 goto :fail
 
 echo.
