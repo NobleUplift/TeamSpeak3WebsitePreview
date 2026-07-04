@@ -75,7 +75,7 @@ The post-build event and `build_plugin.bat` both use the `ZipArchive` approach a
 
 **TS3 emoticon substitution applies in channel descriptions, not chat.** The sequences `:)` `:D` `8)` `;)` `:(` `:C` `:0` `:/` `:x` `:P` are replaced with emoji images in channel descriptions. In chat, URLs inside `[URL]...[/URL]` tags are safe — `://` is not substituted. URLs sent to chat **must** include the full scheme (`https://` or `http://`); protocol-relative URLs (`//example.com`) are not supported by TS3 and render as plain text without a clickable link.
 
-**Reinstalling while TS3 is running produces 0-byte DLLs.** The zip entries are correct (verified by opening the archive), but TS3 cannot overwrite in-use DLLs during extraction, so it truncates them to 0 bytes instead. The symptom is `LoadLibrary error: 193` (`ERROR_BAD_EXE_FORMAT`) for the dependency DLLs. Fix: close TS3 completely, then reinstall the `.ts3_plugin` file, or manually copy the files from `Release\staging_x64\plugins\ts3websitepreview\` into `%APPDATA%\TS3Client\plugins\ts3websitepreview\`.
+**Installing while TS3 is running shows a retriable error.** `package_inst.exe` correctly detects the conflict and prompts "Fail to install Add-On. Do you want to retry as Administrator?" — it does not silently produce 0-byte files. If 0-byte DLLs appear, the cause is a malformed ZIP (e.g. backslash entry names, wrong compression), not TS3 being open.
 
 ## Tests
 
