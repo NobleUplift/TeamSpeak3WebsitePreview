@@ -23,6 +23,9 @@
 
 #include "plugin.h"
 #include "core.h"
+#include "resource.h"
+#include "settings.h"
+#include "plugin_version.h"
 
 #ifdef _WIN32
 static HMODULE hLibcurl = NULL;
@@ -85,6 +88,7 @@ static struct TS3Functions ts3Functions;
 #define RETURNCODE_BUFSIZE 128
 
 static char* pluginID = NULL;
+static char g_pluginPath[MAX_PATH] = "";
 
 static int sentSelfMessage = 0;
 
@@ -117,20 +121,20 @@ const char* ts3plugin_name() {
 	/* TeamSpeak expects UTF-8 encoded characters. Following demonstrates a possibility how to convert UTF-16 wchar_t into UTF-8. */
 	static char* result = NULL;  /* Static variable so it's allocated only once */
 	if(!result) {
-		const wchar_t* name = L"Website Preview";
+		const wchar_t* name = PLUGIN_NAME_W;
 		if(wcharToUtf8(name, &result) == -1) {  /* Convert name into UTF-8 encoded result */
-			result = "Website Preview";  /* Conversion failed, fallback here */
+			result = PLUGIN_NAME;  /* Conversion failed, fallback here */
 		}
 	}
 	return result;
 #else
-	return "Website Preview";
+	return PLUGIN_NAME;
 #endif
 }
 
 /* Plugin version */
 const char* ts3plugin_version() {
-    return "1.0";
+    return PLUGIN_VERSION_STR;
 }
 
 /* Plugin API version. Must be the same as the clients API major version, else the plugin fails to load. */
@@ -140,14 +144,12 @@ int ts3plugin_apiVersion() {
 
 /* Plugin author */
 const char* ts3plugin_author() {
-	/* If you want to use wchar_t, see ts3plugin_name() on how to use */
-    return "NobleUplift";
+    return PLUGIN_AUTHOR;
 }
 
 /* Plugin description */
 const char* ts3plugin_description() {
-	/* If you want to use wchar_t, see ts3plugin_name() on how to use */
-    return "This plugin parses URLs in channel chat and appends a preview of the webpage along with its title and description to the end of the chat message.";
+    return PLUGIN_DESCRIPTION;
 }
 
 /* Set TeamSpeak 3 callback functions */
@@ -178,6 +180,8 @@ int ts3plugin_init() {
     ts3Functions.getResourcesPath(resourcesPath, PATH_BUFSIZE);
     ts3Functions.getConfigPath(configPath, PATH_BUFSIZE);
 	ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE, pluginID);
+	strncpy_s(g_pluginPath, sizeof(g_pluginPath), pluginPath, _TRUNCATE);
+	Settings_Load(g_pluginPath);
 
 	//ts3Functions.logMessage("Current working directory.: ", LogLevel_INFO, "Plugin", 0);
 	//ts3Functions.logMessage((const char *) path, LogLevel_INFO, "Plugin", 0);
@@ -291,7 +295,42 @@ void ts3plugin_shutdown() {
 
 /****************************** Optional functions ********************************/
 
+int ts3plugin_offersConfigure() {
+    return 1;
+}
 
+#ifdef _WIN32
+static INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    (void)lParam;
+    switch (msg) {
+        case WM_INITDIALOG:
+            CheckDlgButton(hwnd, IDC_CHECK_DESCRIPTION,
+                g_settings.show_description ? BST_CHECKED : BST_UNCHECKED);
+            return TRUE;
+        case WM_COMMAND:
+            if (LOWORD(wParam) == IDOK) {
+                g_settings.show_description =
+                    (IsDlgButtonChecked(hwnd, IDC_CHECK_DESCRIPTION) == BST_CHECKED) ? 1 : 0;
+                Settings_Save(g_pluginPath);
+                EndDialog(hwnd, IDOK);
+            } else if (LOWORD(wParam) == IDCANCEL) {
+                EndDialog(hwnd, IDCANCEL);
+            }
+            return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
+void ts3plugin_configure(void* handle, void* qParentWidget) {
+    (void)handle; (void)qParentWidget;
+#ifdef _WIN32
+    HMODULE hDll = NULL;
+    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                       (LPCWSTR)(void*)ts3plugin_configure, &hDll);
+    DialogBox(hDll, MAKEINTRESOURCE(IDD_SETTINGS), NULL, SettingsDlgProc);
+#endif
+}
 
 /* Client changed current server connection handler */
 void ts3plugin_currentServerConnectionChanged(uint64 serverConnectionHandlerID) {
@@ -529,7 +568,7 @@ int ts3plugin_onTextMessageEvent(
 
 			title = og_title ? og_title : (html_title ? html_title : "(untitled)");
 
-			BuildPreviewMessage(title, url, og_desc, og_image, newMessage, sizeof(newMessage));
+			BuildPreviewMessage(title, url, g_settings.show_description ? og_desc : NULL, og_image, newMessage, sizeof(newMessage));
 
 			if (pfn_xmlFree) {
 				if (og_title)   pfn_xmlFree(og_title);

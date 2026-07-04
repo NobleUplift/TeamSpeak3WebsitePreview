@@ -1,0 +1,2 @@
+#define IDD_SETTINGS          101
+#define IDC_CHECK_DESCRIPTION 201

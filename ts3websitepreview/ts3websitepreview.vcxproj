@@ -63,6 +63,13 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="PluginInfo">
+    <PluginName>Website Preview</PluginName>
+    <PluginType>Plugin</PluginType>
+    <PluginVersion>2.0</PluginVersion>
+    <PluginAuthor>NobleUplift (Patrick Seiter)</PluginAuthor>
+    <PluginDescription>This plugin parses URLs in channel chat and appends a preview of the webpage along with its title and description to the end of the chat message.</PluginDescription>
+  </PropertyGroup>
   <PropertyGroup>
     <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>
     <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(SolutionDir)$(MSBuildProjectName)\$(Configuration)_$(Platform)\</OutDir>
@@ -168,7 +175,7 @@
 copy /Y "$(ProjectDir)lib\libcurl.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib\libxml2.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib\iconv.dll" "$(SolutionDir)Release\staging_win32\plugins\ts3websitepreview\libiconv.dll"
-powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win32' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_win32\package.ini'"
+powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}','win32' -replace '\{NAME\}','$(PluginName)' -replace '\{TYPE\}','$(PluginType)' -replace '\{VERSION\}','$(PluginVersion)' -replace '\{AUTHOR\}','$(PluginAuthor)' -replace '\{DESCRIPTION\}','$(PluginDescription)' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_win32\package.ini'"
 powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='$(SolutionDir)Release\ts3websitepreview_win32.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='$(SolutionDir)Release\staging_win32'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -200,16 +207,24 @@ powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='
 copy /Y "$(ProjectDir)lib64\libcurl.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib64\libxml2.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\"
 copy /Y "$(ProjectDir)lib64\iconv.dll" "$(SolutionDir)Release\staging_x64\plugins\ts3websitepreview\libiconv.dll"
-powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}', 'win64' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_x64\package.ini'"
+powershell -NoProfile -Command "(Get-Content '$(ProjectDir)package.ini') -replace '\{PLATFORM\}','win64' -replace '\{NAME\}','$(PluginName)' -replace '\{TYPE\}','$(PluginType)' -replace '\{VERSION\}','$(PluginVersion)' -replace '\{AUTHOR\}','$(PluginAuthor)' -replace '\{DESCRIPTION\}','$(PluginDescription)' | Set-Content -Encoding ASCII '$(SolutionDir)Release\staging_x64\package.ini'"
 powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='$(SolutionDir)Release\ts3websitepreview_win64.ts3_plugin'; if(Test-Path $zip){Remove-Item $zip}; $s=[IO.File]::Open($zip,[IO.FileMode]::Create); $a=[IO.Compression.ZipArchive]::new($s,[IO.Compression.ZipArchiveMode]::Create); $stage='$(SolutionDir)Release\staging_x64'; Get-ChildItem $stage -Recurse -File | Where-Object { $_.Extension -in '.dll','.ini' } | ForEach-Object { $en=$_.FullName.Substring($stage.Length+1).Replace('\','/'); $e=$a.CreateEntry($en,[IO.Compression.CompressionLevel]::Optimal); $es=$e.Open(); $fs=[IO.File]::OpenRead($_.FullName); $fs.CopyTo($es); $fs.Dispose(); $es.Dispose() }; $a.Dispose(); $s.Dispose()"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="core.c" />
     <ClCompile Include="plugin.c" />
+    <ClCompile Include="settings.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="settings.rc" />
+    <None Include="package.ini" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core.h" />
+    <ClInclude Include="plugin_version.h" />
+    <ClInclude Include="resource.h" />
+    <ClInclude Include="settings.h" />
     <ClInclude Include="include\curl\curl.h" />
     <ClInclude Include="include\libxml\HTMLparser.h" />
     <ClInclude Include="include\libxml\xpath.h" />
@@ -225,4 +240,17 @@ powershell -NoProfile -Command "Add-Type -Assembly System.IO.Compression; $zip='
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <Target Name="GeneratePluginVersionHeader" BeforeTargets="ClCompile;ResourceCompile">
+    <ItemGroup>
+      <_HeaderLines Include="#ifndef PLUGIN_VERSION_H" />
+      <_HeaderLines Include="#define PLUGIN_VERSION_H" />
+      <_HeaderLines Include="#define PLUGIN_NAME        &quot;$(PluginName)&quot;" />
+      <_HeaderLines Include="#define PLUGIN_NAME_W      L&quot;$(PluginName)&quot;" />
+      <_HeaderLines Include="#define PLUGIN_VERSION_STR &quot;$(PluginVersion)&quot;" />
+      <_HeaderLines Include="#define PLUGIN_AUTHOR      &quot;$(PluginAuthor)&quot;" />
+      <_HeaderLines Include="#define PLUGIN_DESCRIPTION &quot;$(PluginDescription)&quot;" />
+      <_HeaderLines Include="#endif" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(ProjectDir)plugin_version.h" Lines="@(_HeaderLines)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
 </Project>
