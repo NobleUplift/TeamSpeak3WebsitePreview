@@ -18,7 +18,7 @@ static void test_with_og_desc(void) {
 static void test_with_og_image(void) {
     char out[512];
     BuildPreviewMessage("Example Site", "https://example.com", NULL, "https://example.com/img.png", out, sizeof(out));
-    const char* expected = "\"Example Site\" <[URL]https://example.com[/URL]>\n<img src=\"https://example.com/img.png\">";
+    const char* expected = "\"Example Site\" <[URL]https://example.com[/URL]>\n[img]//example.com/img.png[/img]";
     TEST_ASSERT_EQUAL_STRING(expected, out);
 }
 
@@ -28,7 +28,7 @@ static void test_all_fields(void) {
     const char* expected =
         "\"Title\" <[URL]https://example.com[/URL]>"
         "\nDesc"
-        "\n<img src=\"https://example.com/img.png\">";
+        "\n[img]//example.com/img.png[/img]";
     TEST_ASSERT_EQUAL_STRING(expected, out);
 }
 

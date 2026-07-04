@@ -75,9 +75,12 @@ void BuildPreviewMessage(const char* title, const char* url,
         strncat_s(out, out_size, og_desc, _TRUNCATE);
     }
     if (og_image) {
-        strncat_s(out, out_size, "\n<img src=\"", _TRUNCATE);
-        strncat_s(out, out_size, og_image, _TRUNCATE);
-        strncat_s(out, out_size, "\">", _TRUNCATE);
+        const char *img_url = og_image;
+        if (strncmp(img_url, "https:", 6) == 0) img_url += 6;
+        else if (strncmp(img_url, "http:", 5) == 0) img_url += 5;
+        strncat_s(out, out_size, "\n[img]", _TRUNCATE);
+        strncat_s(out, out_size, img_url, _TRUNCATE);
+        strncat_s(out, out_size, "[/img]", _TRUNCATE);
     }
 #else
     if (og_desc) {
@@ -85,9 +88,12 @@ void BuildPreviewMessage(const char* title, const char* url,
         strncat(out, og_desc, out_size - strlen(out) - 1);
     }
     if (og_image) {
-        strncat(out, "\n<img src=\"", out_size - strlen(out) - 1);
-        strncat(out, og_image, out_size - strlen(out) - 1);
-        strncat(out, "\">", out_size - strlen(out) - 1);
+        const char *img_url = og_image;
+        if (strncmp(img_url, "https:", 6) == 0) img_url += 6;
+        else if (strncmp(img_url, "http:", 5) == 0) img_url += 5;
+        strncat(out, "\n[img]", out_size - strlen(out) - 1);
+        strncat(out, img_url, out_size - strlen(out) - 1);
+        strncat(out, "[/img]", out_size - strlen(out) - 1);
     }
 #endif
 }
