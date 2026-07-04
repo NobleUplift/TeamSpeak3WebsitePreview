@@ -18,7 +18,8 @@ static void test_with_og_desc(void) {
 static void test_with_og_image(void) {
     char out[512];
     BuildPreviewMessage("Example Site", "https://example.com", NULL, "https://example.com/img.png", out, sizeof(out));
-    const char* expected = "\"Example Site\" <[URL]https://example.com[/URL]>\n[img]//example.com/img.png[/img]";
+    /* og_image is ignored — TS3 chat has no tag that renders images */
+    const char* expected = "\"Example Site\" <[URL]https://example.com[/URL]>";
     TEST_ASSERT_EQUAL_STRING(expected, out);
 }
 
@@ -27,8 +28,7 @@ static void test_all_fields(void) {
     BuildPreviewMessage("Title", "https://example.com", "Desc", "https://example.com/img.png", out, sizeof(out));
     const char* expected =
         "\"Title\" <[URL]https://example.com[/URL]>"
-        "\nDesc"
-        "\n[img]//example.com/img.png[/img]";
+        "\nDesc";
     TEST_ASSERT_EQUAL_STRING(expected, out);
 }
 
