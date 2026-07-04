@@ -73,6 +73,8 @@ The post-build event copies `lib/iconv.dll` (Win32) or `lib64/iconv.dll` (x64) a
 
 The post-build event and `build_plugin.bat` both use the `ZipArchive` approach and filter to `.dll`/`.ini` files only, which also excludes linker artifacts (`.exp`, `.lib`) that `ZipFile.CreateFromDirectory` would otherwise include.
 
+**TS3 emoticon substitution applies in channel descriptions, not chat.** The sequences `:)` `:D` `8)` `;)` `:(` `:C` `:0` `:/` `:x` `:P` are replaced with emoji images in channel descriptions. In chat, URLs inside `[URL]...[/URL]` tags are safe — `://` is not substituted. URLs sent to chat **must** include the full scheme (`https://` or `http://`); protocol-relative URLs (`//example.com`) are not supported by TS3 and render as plain text without a clickable link.
+
 **Reinstalling while TS3 is running produces 0-byte DLLs.** The zip entries are correct (verified by opening the archive), but TS3 cannot overwrite in-use DLLs during extraction, so it truncates them to 0 bytes instead. The symptom is `LoadLibrary error: 193` (`ERROR_BAD_EXE_FORMAT`) for the dependency DLLs. Fix: close TS3 completely, then reinstall the `.ts3_plugin` file, or manually copy the files from `Release\staging_x64\plugins\ts3websitepreview\` into `%APPDATA%\TS3Client\plugins\ts3websitepreview\`.
 
 ## Tests

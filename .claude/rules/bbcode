@@ -1,0 +1,48 @@
+# TeamSpeak 3 BBCode Reference
+
+Source: https://www.teamspeak3.com/support/teamspeak-3-bbcode-available-in-teamspeak.php
+
+## What Actually Works in Chat
+
+Only these tags are functional in TS3 chat messages:
+
+| Tag | Description | Example |
+|-----|-------------|---------|
+| `[b]...[/b]` | Bold | `[b]bold text[/b]` |
+| `[i]...[/i]` | Italic | `[i]italic text[/i]` |
+| `[u]...[/u]` | Underline | `[u]underlined text[/u]` |
+| `[color=X]...[/color]` | Color (name or hex) | `[color=green]text[/color]` |
+| `[url=X]label[/url]` | Hyperlink with label | `[url=https://example.com]Click here[/url]` |
+| `[URL]https://...[/URL]` | Bare hyperlink (auto-linked) | `[URL]https://example.com[/URL]` |
+
+## Tags That Do NOT Work in Chat (render as literal text)
+
+The following tags were tested in TS3 3.6.2 chat and do not render — they appear as raw BBCode text:
+
+- `[img]` — no inline image embedding in chat
+- `[quote]` — no blockquote
+- `[code]` — no code block
+- `[pre]` — no monospace/preformatted block
+- `[style]` — no style attribute support
+- `[list]` / `[*]` — no list rendering
+- `[table]` / `[tr]` / `[th]` / `[td]` — no table rendering
+- `[left]` / `[center]` / `[right]` — no alignment
+- `[size]` — no font size control
+
+The TS3 website documentation lists some of these as "channel description only" but they do not appear to work in channel descriptions either under TS3 3.6.2.
+
+## Emoticon Sequences
+
+The following text sequences are replaced with emoji images **in channel descriptions**:
+
+`:)` `:D` `8)` `;)` `:(` `:C` `:0` `:/` `:x` `:P`
+
+The most dangerous for URLs is `:/` — it appears in `https://` and `http://`,
+consuming the colon and one slash (e.g. `https://` becomes `https/`).
+
+**In chat messages:** URLs inside `[URL]...[/URL]` tags are safe — `://` is not
+substituted. Always wrap URLs in `[URL]` tags in chat output.
+
+**URL scheme requirement:** Protocol-relative URLs (`//example.com`) are not
+supported — TS3 renders them as plain unlinked text. URLs must always include
+the full scheme (`https://` or `http://`).

@@ -1,7 +1,10 @@
 # Claude
-.claude
+.claude/*
 !.claude/settings.json
 !.claude/plans
+!.claude/plans/**
+!.claude/rules
+!.claude/rules/**
 
 # TS3 Website Preview Exclusions
 */include/*
