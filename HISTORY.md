@@ -17,50 +17,7 @@ This is written as a reference for anyone (including future me) returning to C p
 
 ---
 
-### 1. TS3 Plugin API Version Mismatch
-
-**The rule**: `ts3plugin_apiVersion()` must return the exact integer the running TS3 client expects. If it doesn't match, TS3 refuses to load the plugin without printing any error beyond a generic failure message.
-
-**What happened**: The plugin declared `#define PLUGIN_API_VERSION 22`. TeamSpeak 3 3.6.2 (released September 2023) requires API version **26**. The API version number had advanced across four major increments (23, 24, 25, 26) between 2016 and 2023, tracking changes to the plugin ABI and function signatures.
-
-**Why it was hard to diagnose**: TS3's error dialog said something like `Failed to open plugin.: 0 (minimum: 26, current: 26)`. This phrasing is paradoxical — it appears to say both the minimum and current version are 26, implying they match, when in reality "current" meant the API version the *client* is running and "minimum" was a floor check. The plugin's own returned version (22) was the mismatch and wasn't shown directly in the error string.
-
-**Fix**: `#define PLUGIN_API_VERSION 26` in `plugin.c`, and update the vendored SDK headers to match the API 26 SDK.
-
----
-
-### 2. `getPluginPath()` Grew a Third Parameter in API 23
-
-**The rule**: When a function in the `TS3Functions` struct changes its signature, the C calling convention means calling it with the wrong number of arguments silently corrupts the stack or reads garbage from it. There is no compile-time check — the struct field is a raw function pointer, and calling it with mismatched arguments is undefined behavior.
-
-**What happened**: In API 23, `getPluginPath` changed from:
-```c
-void (*getPluginPath)(char* path, size_t maxLen);
-```
-to:
-```c
-void (*getPluginPath)(char* path, size_t maxLen, const char* pluginID);
-```
-
-The old code called `ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE)` with two arguments. On x86 (Win32), the stack-based calling convention means the callee pops two arguments off the stack but TS3 pushed three — leaving the stack pointer in a corrupted state after return. On x64 (which uses registers for the first four arguments), the third register argument was simply ignored, making this a silent no-op rather than a crash. This explains why the x64 and x32 builds may have behaved differently.
-
-**Fix**: Call as `ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE, pluginID)`.
-
----
-
-### 3. Plugin DLL Filename Must Include an Architecture Suffix
-
-**The rule**: TeamSpeak 3 only recognizes plugin DLLs whose filename ends in `_win32.dll` (for 32-bit) or `_win64.dll` (for 64-bit). A DLL named `ts3websitepreview.dll` is simply ignored by the plugin loader — TS3 never attempts to load it.
-
-**What happened**: The project was building `ts3websitepreview.dll`. This file would sit in the plugins folder and do nothing, not even generating an error, because TS3 never tried to open it.
-
-**Why it was hard to diagnose**: There is no error message for this case. The plugin just doesn't appear in the list. The naming convention is documented in the TS3 plugin SDK but easy to miss, especially since the SDK sample project names its output with the suffix and the vcxproj `TargetName` default is just the project name.
-
-**Fix**: Set `<TargetName>ts3websitepreview_win32</TargetName>` and `<TargetName>ts3websitepreview_win64</TargetName>` in the Release configurations of `ts3websitepreview.vcxproj`.
-
----
-
-### 4. Dependency DLLs Must Go in a Subdirectory, But Windows Won't Search There Automatically
+### 1. Dependency DLLs Must Go in a Subdirectory, But Windows Won't Search There Automatically
 
 **The rule**: The conventional TS3 plugin package layout puts dependency DLLs in `%AppData%\TS3Client\plugins\<pluginname>\` — a subdirectory named after the plugin (without the `_win64` suffix). However, the Windows DLL loader does **not** automatically search subdirectories when resolving imports. The standard DLL search order is: (1) the directory containing the loaded DLL, (2) system directories, (3) the Windows directory, (4) the current directory, (5) directories in PATH. A subdirectory like `plugins\ts3websitepreview\` appears in none of these.
 
@@ -72,7 +29,7 @@ The old code called `ts3Functions.getPluginPath(pluginPath, PATH_BUFSIZE)` with 
 
 ---
 
-### 5. `libxml2.dll` Cannot Be Delay-Loaded Due to a Data Symbol Export
+### 2. `libxml2.dll` Cannot Be Delay-Loaded Due to a Data Symbol Export
 
 **The rule**: Windows delay-loading works by replacing each imported function with a stub that loads the DLL and resolves the real address on first call. This mechanism only works for **function** imports. It cannot handle **data symbol** imports — imported global variables.
 
@@ -94,7 +51,7 @@ This error is unambiguous but the solution isn't obvious. The git history shows 
 
 ---
 
-### 6. `xmlFree` via `GetProcAddress` Requires a Double Dereference
+### 3. `xmlFree` via `GetProcAddress` Requires a Double Dereference
 
 **The rule**: `GetProcAddress(hModule, "symbol")` returns the address **of** the named symbol in the loaded module. For a function, that address is directly callable. For a data symbol (a global variable), that address is a pointer **to** the variable — you must dereference it to get the variable's value.
 
@@ -111,7 +68,7 @@ The cast to `pfnXmlFree_t*` interprets the `GetProcAddress` result as a pointer-
 
 ---
 
-### 7. `libiconv.dll` Was Named `iconv.dll`
+### 4. `libiconv.dll` Was Named `iconv.dll`
 
 **The rule**: Windows DLL resolution is by filename. When libxml2.dll has an import table entry for `libiconv.dll`, Windows searches for a file named exactly `libiconv.dll`. A file named `iconv.dll` in the same directory does not satisfy this import, regardless of its content.
 
@@ -123,7 +80,7 @@ The cast to `pfnXmlFree_t*` interprets the `GetProcAddress` result as a pointer-
 
 ---
 
-### 8. Loading libxml2 From a Subdirectory Requires `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR`
+### 5. Loading libxml2 From a Subdirectory Requires `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR`
 
 **The rule**: When you call `LoadLibraryExW(fullPathToSomeDll, NULL, 0)`, Windows loads that DLL from the specified path. However, when it resolves *that DLL's* own imports (e.g., libxml2 needing libiconv), it uses the standard search order — which does **not** include the directory the DLL was just loaded from unless you tell it to.
 
@@ -140,7 +97,7 @@ hLibxml2 = LoadLibraryExW(fullPath, NULL,
 
 ---
 
-### 9. libcurl Was Linked Against OpenSSL, Which TS3 Also Bundles
+### 6. libcurl Was Linked Against OpenSSL, Which TS3 Also Bundles
 
 **The rule**: When two DLLs in the same process both load different copies of OpenSSL — one bundled with the application, one bundled with a plugin dependency — there can be conflicts at initialization, symbol resolution, or runtime state sharing between OpenSSL instances.
 
@@ -150,7 +107,7 @@ hLibxml2 = LoadLibraryExW(fullPath, NULL,
 
 ---
 
-### 10. The VS 2010 Build Toolset (v100) No Longer Exists
+### 7. The VS 2010 Build Toolset (v100) No Longer Exists
 
 **The rule**: MSBuild selects a compiler toolchain via the `<PlatformToolset>` property. The project was created with Visual Studio 2010 (toolset `v100`). Visual Studio 2022 does not ship the v100 toolset and will refuse to build with error MSB8020.
 
@@ -160,7 +117,7 @@ hLibxml2 = LoadLibraryExW(fullPath, NULL,
 
 ---
 
-### 11. Release|x64 Was Pointing to the Win32 Library Directory
+### 8. Release|x64 Was Pointing to the Win32 Library Directory
 
 **The rule**: 64-bit import libraries (`.lib` files that describe 64-bit DLL exports) are not interchangeable with 32-bit ones. Linking a 64-bit object against a 32-bit import library produces unresolved external symbol errors.
 
@@ -176,7 +133,7 @@ The x64 libraries live in `.\lib64\`, not `.\lib\`. This caused linker failures 
 
 ---
 
-### 12. Win32 and x64 Release Builds Overwrote Each Other
+### 9. Win32 and x64 Release Builds Overwrote Each Other
 
 **The rule**: MSBuild uses `<OutDir>` to determine where the linker places the output DLL. If two configurations share the same `<OutDir>`, building one will overwrite the other's output.
 
@@ -188,7 +145,7 @@ The x64 libraries live in `.\lib64\`, not `.\lib\`. This caused linker failures 
 
 ---
 
-### 13. `clientlib_publicdefinitions.h` Was Removed from the SDK in API 23
+### 10. `clientlib_publicdefinitions.h` Was Removed from the SDK in API 23
 
 **The rule**: SDK header files are versioned along with the API. When the SDK removes a header, code that includes it fails to compile.
 
@@ -204,7 +161,7 @@ The x64 libraries live in `.\lib64\`, not `.\lib\`. This caused linker failures 
 
 ---
 
-### 14. Two Callback Function Signatures Changed in API 23
+### 11. Two Callback Function Signatures Changed in API 23
 
 **The rule**: The TS3 plugin API is defined by a set of function signatures the plugin exports. If TS3 calls a plugin-exported function with a different signature than the one the plugin was compiled with, the arguments will be misread from the stack (x86) or registers (x64), and if the function returns a value, the return type mismatch may cause additional corruption. On x64, calling a function that expects 3 parameters with 6 arguments passed in registers simply means the extra register arguments are ignored — but the plugin's return value and any out-parameters may still be wrong.
 
@@ -232,7 +189,7 @@ Neither function had an implementation in `plugin.c`, so these were declaration-
 
 ---
 
-### 15. The Original Delay-Load Code Used the Wrong SEH Exception Filter
+### 12. The Original Delay-Load Code Used the Wrong SEH Exception Filter
 
 **The detail**: The original commented-out `__try/__except` blocks used `FACILITY_VISUALCPP` as the exception filter expression:
 
@@ -250,11 +207,11 @@ This was not the root cause of any failure but represents the kind of subtly wro
 
 ---
 
-### 16. TS3's Error Messages Were Essentially Useless
+### 13. TS3's Error Messages Were Essentially Useless
 
 **The summary**: Every single failure described above produced one of the following messages in TS3's plugin manager:
 
-- *(plugin doesn't appear at all)* — wrong filename, wrong API version
+- *(plugin doesn't appear at all)*
 - `Failed to open plugin.: 0` — LoadLibrary returned NULL, GetLastError returned 0 (or the DLL loaded but returned a failure from ts3plugin_init)
 - `Failed to open plugin.: -1127266411` — LoadLibrary returned NULL with a specific Win32 error encoded as a signed HRESULT
 
@@ -264,21 +221,18 @@ None of these messages identified which DLL was missing, what the actual Windows
 
 ## What Finally Fixed It (July 3, 2026)
 
-All sixteen issues above were present simultaneously or sequentially. The final working state required:
+All thirteen issues above were present simultaneously or sequentially. The final working state required:
 
-1. Update SDK headers to API 26 and set `PLUGIN_API_VERSION 26`
-2. Fix `getPluginPath` call to pass three arguments
-3. Set `TargetName` in vcxproj to produce `_win32`/`_win64` suffixed DLL names
-4. Build libcurl from source with SChannel backend (no OpenSSL)
-5. Add `<PlatformToolset>v143</PlatformToolset>` to all project configurations
-6. Fix `Release|x64` to use `lib64\` not `lib\`
-7. Route each Release config to its own `.ts3_plugin` output directory
-8. Replace the `clientlib_publicdefinitions.h` include with a shim
-9. Fix the two changed callback declarations in `plugin.h`
-10. Replace all direct `libcurl` and `libxml2` function calls in `plugin.c` with `LoadLibraryExW` / `GetProcAddress` dynamic loading, so all dependency DLLs can live in `plugins\ts3websitepreview\` per TS3 convention
-11. Handle the `xmlFree` data symbol double-dereference correctly
-12. Use `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR` so libxml2 can find libiconv alongside it
-13. Rename/rebuild `iconv.dll` to `libiconv.dll`
+1. Build libcurl from source with SChannel backend (no OpenSSL)
+2. Add `<PlatformToolset>v143</PlatformToolset>` to all project configurations
+3. Fix `Release|x64` to use `lib64\` not `lib\`
+4. Route each Release config to its own `.ts3_plugin` output directory
+5. Replace the `clientlib_publicdefinitions.h` include with a shim
+6. Fix the two changed callback declarations in `plugin.h`
+7. Replace all direct `libcurl` and `libxml2` function calls in `plugin.c` with `LoadLibraryExW` / `GetProcAddress` dynamic loading, so all dependency DLLs can live in `plugins\ts3websitepreview\` per TS3 convention
+8. Handle the `xmlFree` data symbol double-dereference correctly
+9. Use `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR` so libxml2 can find libiconv alongside it
+10. Rename/rebuild `iconv.dll` to `libiconv.dll`
 
 ---
 
