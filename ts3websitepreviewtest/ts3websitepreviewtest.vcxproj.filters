@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="Source Files">
@@ -15,7 +15,36 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\ts3websitepreview\include\teamspeak3\teamspeak\clientlib_publicdefinitions.h">
+    <ClCompile Include="..\ts3websitepreview\core.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="main_test.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="test_callback.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="test_message.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="test_parse.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="test_url.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="unity\unity.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\ts3websitepreview\core.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unity\unity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unity\unity_internals.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\ts3websitepreview\include\curl\curl.h">
@@ -24,10 +53,13 @@
     <ClInclude Include="..\ts3websitepreview\include\libxml\HTMLparser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\ts3websitepreview\include\libxml\xpath.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\ts3websitepreview\include\teamspeak3\teamlog\logtypes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\ts3websitepreview\plugin.h">
+    <ClInclude Include="..\ts3websitepreview\include\teamspeak3\teamspeak\clientlib_publicdefinitions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\ts3websitepreview\include\teamspeak3\teamspeak\public_definitions.h">
@@ -45,13 +77,8 @@
     <ClInclude Include="..\ts3websitepreview\include\teamspeak3\ts3_functions.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\ts3websitepreview\include\libxml\xpath.h">
+    <ClInclude Include="..\ts3websitepreview\plugin.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="main.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>

@@ -61,7 +61,7 @@ ts3websitepreview_win64.ts3_plugin\
 - Win32 also needs `zlib1.dll` in the subdirectory if the libcurl/libxml2 builds require it (x64 builds linked it statically).
 - `libiconv.dll` must be named exactly `libiconv.dll`, not `iconv.dll` — libxml2.dll imports it by that exact name.
 
-The post-build event copies `lib/iconv.dll` (Win32) or `lib64/iconv.dll` (x64) as `libiconv.dll` into the staging directory — no separate build step is needed. The `libiconv` project remains in the solution for reference but is excluded from all solution builds.
+The post-build event copies `lib/iconv.dll` (Win32) or `lib64/iconv.dll` (x64) as `libiconv.dll` into the staging directory — no separate build step is needed.
 
 **ZIP format requirements for `package_inst.exe`:** The `.ts3_plugin` file is a ZIP archive. TS3's installer (`package_inst.exe`) is strict about two things:
 
@@ -75,7 +75,7 @@ The post-build event and `build_plugin.bat` both use the `ZipArchive` approach a
 
 **TS3 emoticon substitution applies in channel descriptions, not chat.** The sequences `:)` `:D` `8)` `;)` `:(` `:C` `:0` `:/` `:x` `:P` are replaced with emoji images in channel descriptions. In chat, URLs inside `[URL]...[/URL]` tags are safe — `://` is not substituted. URLs sent to chat **must** include the full scheme (`https://` or `http://`); protocol-relative URLs (`//example.com`) are not supported by TS3 and render as plain text without a clickable link.
 
-**Installing while TS3 is running shows a retriable error.** `package_inst.exe` correctly detects the conflict and prompts "Fail to install Add-On. Do you want to retry as Administrator?" — it does not silently produce 0-byte files. If 0-byte DLLs appear, the cause is a malformed ZIP (e.g. backslash entry names, wrong compression), not TS3 being open.
+**Installing while TS3 is running shows a misleading error.** `package_inst.exe` prompts "Fail to install Add-On. Do you want to retry as Administrator?" — but running as Administrator does not help. TS3 must be closed before installing; the Administrator prompt is a false error message. If 0-byte DLLs appear after a successful install, the cause is a malformed ZIP (e.g. backslash entry names, wrong compression), not TS3 being open.
 
 ## Tests
 
@@ -87,7 +87,6 @@ The post-build event and `build_plugin.bat` both use the `ZipArchive` approach a
 
 - **ts3websitepreview** — the plugin DLL. Implements the TeamSpeak 3 plugin API (API version 26). The only event handler that matters is `ts3plugin_onTextMessageEvent()` in `plugin.c`.
 - **ts3websitepreviewtest** — Unity unit test harness.
-- **libiconv** — source project retained for reference; not built by default. The prebuilt `lib/iconv.dll` / `lib64/iconv.dll` binaries (sourced externally, gitignored) are used directly.
 
 **Message processing flow** (`plugin.c:ts3plugin_onTextMessageEvent`):
 
