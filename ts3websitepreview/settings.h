@@ -3,6 +3,7 @@
 
 typedef struct {
     int show_description;
+    int show_title_inline;
 } PluginSettings;
 
 extern PluginSettings g_settings;

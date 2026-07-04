@@ -97,6 +97,10 @@ static int sentSelfMessage = 0;
 static char lastSentURL[2048] = "";
 static DWORD lastSentURLTick = 0;
 
+/* Track the last mixed message (use case 2) to suppress its server echo. */
+static char lastSentMessage[2048] = "";
+static DWORD lastSentMessageTick = 0;
+
 #ifdef _WIN32
 /* Helper function to convert wchar_T to Utf-8 encoded strings on Windows */
 static int wcharToUtf8(const wchar_t* str, char** result) {
@@ -305,12 +309,16 @@ static INT_PTR CALLBACK SettingsDlgProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     switch (msg) {
         case WM_INITDIALOG:
             CheckDlgButton(hwnd, IDC_CHECK_DESCRIPTION,
-                g_settings.show_description ? BST_CHECKED : BST_UNCHECKED);
+                g_settings.show_description  ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hwnd, IDC_CHECK_TITLE_INLINE,
+                g_settings.show_title_inline ? BST_CHECKED : BST_UNCHECKED);
             return TRUE;
         case WM_COMMAND:
             if (LOWORD(wParam) == IDOK) {
                 g_settings.show_description =
-                    (IsDlgButtonChecked(hwnd, IDC_CHECK_DESCRIPTION) == BST_CHECKED) ? 1 : 0;
+                    (IsDlgButtonChecked(hwnd, IDC_CHECK_DESCRIPTION)  == BST_CHECKED) ? 1 : 0;
+                g_settings.show_title_inline =
+                    (IsDlgButtonChecked(hwnd, IDC_CHECK_TITLE_INLINE) == BST_CHECKED) ? 1 : 0;
                 Settings_Save(g_pluginPath);
                 EndDialog(hwnd, IDOK);
             } else if (LOWORD(wParam) == IDCANCEL) {
@@ -503,13 +511,9 @@ int ts3plugin_onTextMessageEvent(
 
 			const char* url = GetURLFromMessage(message);
 
+			if (url != NULL) {
 			chunk.memory = (char *) malloc(1);  /* will be grown as needed by the realloc above */
 			chunk.size = 0;    /* no data at this point */
-
-			if (url == NULL) {
-				free(chunk.memory);
-				return 0;
-			}
 
 			/* Suppress the server echo of a URL we already processed within the last 30 s.
 			 * TS3 echoes the original [URL]...[/URL] message back from the server after we
@@ -587,10 +591,105 @@ int ts3plugin_onTextMessageEvent(
 				ts3Functions.logMessage("Error requesting send text message", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
 			}
 			return 1;
+			} /* url != NULL (use case 1) */
+
+			/* Use case 2: URL(s) embedded in a typed message. */
+			if (g_settings.show_title_inline) {
+				char* inlineURLs[MAX_URLS_PER_MESSAGE];
+				char* inlineTitles[MAX_URLS_PER_MESSAGE];
+				int urlCount, i, anyTitle;
+				struct MemoryStruct chunk2;
+				CURLcode curlCode2;
+				const char *curlMessage2;
+				htmlDocPtr doc2;
+				xmlXPathContextPtr context2;
+				xmlXPathObjectPtr result2;
+				char* og_title2;
+				char* html_title2;
+
+				/* Suppress server echo of the original message we already processed. */
+				{
+					DWORD now = GetTickCount();
+					if (lastSentMessage[0] != '\0' && strcmp(message, lastSentMessage) == 0
+							&& (now - lastSentMessageTick) < 30000U) {
+						return 1;
+					}
+				}
+
+				memset(inlineURLs,   0, sizeof(inlineURLs));
+				memset(inlineTitles, 0, sizeof(inlineTitles));
+				urlCount = FindURLsInMessage(message, inlineURLs, MAX_URLS_PER_MESSAGE);
+				anyTitle = 0;
+
+				for (i = 0; i < urlCount; i++) {
+					curlMessage2 = "";
+					og_title2    = NULL;
+					html_title2  = NULL;
+
+					chunk2.memory = (char*)malloc(1);
+					chunk2.size   = 0;
+
+					GetHTML(inlineURLs[i], &chunk2, &curlCode2, curlMessage2);
+
+					if (curlCode2 != 0) {
+						free(chunk2.memory);
+						continue;
+					}
+
+					doc2 = pfn_htmlReadMemory(chunk2.memory, chunk2.size, inlineURLs[i], NULL,
+					                          HTML_PARSE_NOERROR | HTML_PARSE_NOWARNING);
+					free(chunk2.memory);
+					if (!doc2) continue;
+
+					context2  = pfn_xmlXPathNewContext(doc2);
+					og_title2 = GetOGProperty(doc2, context2, "og:title");
+
+					if (!og_title2) {
+						result2 = pfn_xmlXPathEvalExpression("/html/head/title", context2);
+						if (result2 && !xmlXPathNodeSetIsEmpty(result2->nodesetval)) {
+							html_title2 = (char*)pfn_xmlNodeListGetString(doc2,
+								result2->nodesetval->nodeTab[result2->nodesetval->nodeNr - 1]->xmlChildrenNode, 1);
+						}
+						if (result2) pfn_xmlXPathFreeObject(result2);
+					}
+
+					if (pfn_xmlXPathFreeContext) pfn_xmlXPathFreeContext(context2);
+					pfn_xmlFreeDoc(doc2);
+
+					inlineTitles[i] = og_title2 ? og_title2 : html_title2;
+					if (inlineTitles[i]) anyTitle = 1;
+				}
+
+				if (urlCount > 0 && anyTitle) {
+					BuildMessageWithInlineTitles(message, (const char**)inlineURLs,
+					                             (const char**)inlineTitles, urlCount,
+					                             newMessage, sizeof(newMessage));
+
+					for (i = 0; i < urlCount; i++) {
+						if (inlineURLs[i])                  free(inlineURLs[i]);
+						if (inlineTitles[i] && pfn_xmlFree) pfn_xmlFree(inlineTitles[i]);
+					}
+
+					if (strcmp(newMessage, message) != 0) {
+						strncpy_s(lastSentMessage, sizeof(lastSentMessage), message, _TRUNCATE);
+						lastSentMessageTick = GetTickCount();
+						sentSelfMessage = 1;
+						if (ts3Functions.requestSendChannelTextMsg(serverConnectionHandlerID, newMessage, channelID, NULL) != ERROR_ok) {
+							ts3Functions.logMessage("Error requesting send text message", LogLevel_ERROR, "Plugin", serverConnectionHandlerID);
+						}
+						return 1;
+					}
+				} else {
+					for (i = 0; i < urlCount; i++) {
+						if (inlineURLs[i])                  free(inlineURLs[i]);
+						if (inlineTitles[i] && pfn_xmlFree) pfn_xmlFree(inlineTitles[i]);
+					}
+				}
+			}
+
+			return 0;
 		} else {
-			/* First echo of our formatted message — display it, then clear the flag.
-			 * If the server sends a second echo it will fail the URL check and also
-			 * return 0, but that is harmless (same message, idempotent display). */
+			/* First echo of our formatted message — display it, then clear the flag. */
 			sentSelfMessage = 0;
 			return 0;
 		}

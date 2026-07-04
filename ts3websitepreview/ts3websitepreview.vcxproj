@@ -66,9 +66,9 @@
   <PropertyGroup Label="PluginInfo">
     <PluginName>Website Preview</PluginName>
     <PluginType>Plugin</PluginType>
-    <PluginVersion>2.0</PluginVersion>
+    <PluginVersion>3.0</PluginVersion>
     <PluginAuthor>NobleUplift (Patrick Seiter)</PluginAuthor>
-    <PluginDescription>This plugin parses URLs in channel chat and appends a preview of the webpage along with its title and description to the end of the chat message.</PluginDescription>
+    <PluginDescription>Fetches the title (and optionally description) of URLs sent in chat. Works for URL-only messages and for URLs embedded in typed messages.</PluginDescription>
   </PropertyGroup>
   <PropertyGroup>
     <_ProjectFileVersion>10.0.40219.1</_ProjectFileVersion>

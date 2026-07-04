@@ -166,6 +166,7 @@
     <ClCompile Include="..\ts3websitepreview\core.c" />
     <ClCompile Include="main_test.c" />
     <ClCompile Include="test_callback.c" />
+    <ClCompile Include="test_inline.c" />
     <ClCompile Include="test_message.c" />
     <ClCompile Include="test_parse.c" />
     <ClCompile Include="test_url.c" />

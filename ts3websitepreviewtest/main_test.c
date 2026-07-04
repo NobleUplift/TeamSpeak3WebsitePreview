@@ -5,6 +5,7 @@ void RunURLTests(void);
 void RunCallbackTests(void);
 void RunMessageTests(void);
 void RunParseTests(void);
+void RunInlineTests(void);
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -16,6 +17,7 @@ int main(void) {
     RunCallbackTests();
     RunMessageTests();
     RunParseTests();
+    RunInlineTests();
     result = UNITY_END();
     printf("\nPress Enter to exit...");
     getchar();
