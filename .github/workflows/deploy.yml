@@ -65,7 +65,6 @@ jobs:
           version: '5.15.2'
           target: 'desktop'
           arch: ${{ matrix.qt_arch }}
-          modules: 'qtnetwork'
           cache: true
 
       - name: Configure
