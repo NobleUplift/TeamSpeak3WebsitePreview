@@ -66,48 +66,71 @@ Settings are saved to `%AppData%\TS3Client\config\plugins\ts3websitepreview.ini`
 
 ## Installation
 
-Download the `.ts3_plugin` package for your architecture and double-click it while TeamSpeak 3 is **closed**.
+Download the `.ts3_plugin` package and double-click it while TeamSpeak 3 is **closed**. One package
+covers all platforms — TS3 loads the binary matching the client's OS/arch.
 
 > **Note:** Installing while TS3 is running shows a misleading "Fail to install Add-On. Do you want to retry as Administrator?" prompt — running as Administrator does not help. Close TS3 first, then install.
 
-Manual layout (if installing by hand into `%AppData%\TS3Client\plugins\`):
+Package layout (what the `.ts3_plugin` ZIP contains):
 
 ```
-plugins\
-  ts3websitepreview_win64.dll       ← main plugin DLL (_win32.dll for 32-bit TS3)
-  ts3websitepreview\
-    libcurl.dll
-    libxml2.dll
-    libiconv.dll
-    zlib1.dll                       ← Win32 only
+package.ini
+plugins/
+  ts3websitepreview_win64.dll        ← TS3 loads the binary matching the client OS/arch
+  ts3websitepreview_win32.dll
+  ts3websitepreview_linux_amd64.so
+  ts3websitepreview_mac.dylib
 ```
+
+Nothing else is bundled — the plugin uses **Qt**, which the TeamSpeak client already provides.
 
 ---
 
 ## Requirements
 
-- **TeamSpeak 3** 3.6.2 or later (Plugin API 26)
-- **Windows** (Win32 or x64) — the plugin has no macOS or Linux build
+- **TeamSpeak 3** 3.6.2 or later (Plugin API 26), which provides **Qt 5.15.2** — the plugin's only *runtime* dependency (the HTML parser is compiled in)
+- **Windows** (Win32 / x64), **Linux** (x86-64), or **macOS** — the settings dialog (a Qt dialog) works on all three
 
 ---
 
 ## Building
 
-Requires **Visual Studio 2022** (toolset v143) with the Desktop C++ workload. The dependency DLLs (`libcurl`, `libxml2`, `libiconv`) and their import libraries are not included in the repository and must be sourced separately. libcurl must be built with the **SChannel** backend (no OpenSSL dependency).
+The build is **CMake-based** (CMake ≥ 3.21) — there is no `.sln`. First get the **TS3 SDK submodule**:
 
-```bat
-build_plugin.bat
+```sh
+git clone --recursive <repo-url>
+# or, in an existing clone:
+git submodule update --init
 ```
 
-Or directly via MSBuild:
+The HTML parser ([Gumbo](https://github.com/google/gumbo-parser)) is vendored as a submodule and built
+from source (so `--recursive` / `submodule update --init` above is what pulls it — nothing to install).
+The only thing you install is **Qt 5.15** (Widgets + Network). Install it, point CMake at it, and build:
 
-```bat
-MSBuild.exe ts3websitepreview\ts3websitepreview.vcxproj ^
-    /p:Configuration=Release /p:Platform=x64 ^
-    /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+- **Windows** — Visual Studio 2022 + Qt 5.15.2 (msvc2019). Build each arch separately (the VS
+  generator is single-arch per build tree):
+  ```bat
+  cmake --preset win32 && cmake --build --preset win32
+  cmake --preset win64 && cmake --build --preset win64
+  ```
+- **Linux** — `sudo apt-get install -y qtbase5-dev`, then `cmake --preset linux && cmake --build --preset linux`.
+- **macOS** — `brew install qt@5` (then set `CMAKE_PREFIX_PATH=$(brew --prefix qt@5)`), then
+  `cmake --preset mac && cmake --build --preset mac`.
+
+Output binary: `build/<preset>/out/ts3websitepreview_<suffix>{.dll,.so,.dylib}`. Assembling all
+platforms into one installable `.ts3_plugin` is done by CI
+([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) on a `v*` tag push.
+
+To also build and run the unit tests (Unity C core tests + a QtTest for the HTML parser), add
+`-DBUILD_TESTS=ON` and run via CTest — e.g. on Linux:
+
+```sh
+cmake --preset linux -DBUILD_TESTS=ON && cmake --build --preset linux
+ctest --test-dir build/linux --output-on-failure
 ```
 
-See `CLAUDE.md` for full build, dependency, and packaging instructions.
+Plugin metadata (name, version, author, description) lives in the `project()`/`PLUGIN_*` block at
+the top of `CMakeLists.txt`. See `CLAUDE.md` for full build, dependency, and packaging details.
 
 ---
 

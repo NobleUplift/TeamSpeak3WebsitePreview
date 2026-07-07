@@ -1,14 +1,12 @@
 #pragma once
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MAX_URLS_PER_MESSAGE 5
 
-struct MemoryStruct {
-    char *memory;
-    size_t size;
-};
-
-size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp);
 const char* GetURLFromMessage(const char* message);
 void BuildPreviewMessage(const char* title, const char* url,
                          const char* og_desc, const char* og_image,
@@ -26,3 +24,7 @@ int FindURLsInMessage(const char* message, char** urls_out, int max_urls);
 void BuildMessageWithInlineTitles(const char* message,
                                   const char** urls, const char** titles,
                                   int url_count, char* out, size_t out_size);
+
+#ifdef __cplusplus
+}
+#endif

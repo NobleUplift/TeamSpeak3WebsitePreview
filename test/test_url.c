@@ -1,5 +1,5 @@
 #include "unity/unity.h"
-#include "../ts3websitepreview/core.h"
+#include "core.h"
 #include <stdlib.h>
 #include <string.h>
 

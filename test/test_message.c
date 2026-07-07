@@ -1,5 +1,5 @@
 #include "unity/unity.h"
-#include "../ts3websitepreview/core.h"
+#include "core.h"
 #include <string.h>
 
 static void test_title_and_url_only(void) {

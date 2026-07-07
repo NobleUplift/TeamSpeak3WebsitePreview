@@ -1,0 +1,140 @@
+name: Build and Deploy
+
+# Builds the plugin for win64/win32/linux_amd64/mac and publishes a single
+# combined .ts3_plugin as a GitHub release when a v* tag is pushed.
+#
+# Pure Qt: the only dependency is Qt 5.15.2 (installed per platform via
+# install-qt-action, and provided at runtime by the TS3 client), so nothing is
+# bundled — the package is just the four binaries + package.ini.
+#
+# NOTE: CI needs real-run iteration; the first tag push may need touch-ups
+# (most likely the Qt arch names and the macOS install_name_tool rpath fix).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: win64
+            cmake_arch: x64
+            msvc_arch: x64
+            qt_arch: win64_msvc2019_64
+          - os: windows-latest
+            name: win32
+            cmake_arch: Win32
+            msvc_arch: x86
+            qt_arch: win32_msvc2019
+          - os: ubuntu-latest
+            name: linux_amd64
+            qt_arch: gcc_64
+          - os: macos-26-intel
+            name: mac
+            qt_arch: clang_64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Version from tag
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc_arch }}
+
+      - name: Install Qt 5.15.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          target: 'desktop'
+          arch: ${{ matrix.qt_arch }}
+          cache: true
+
+      - name: Configure
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cmake -S . -B build -A ${{ matrix.cmake_arch }} -DPLUGIN_VERSION="$PLUGIN_VERSION"
+          else
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPLUGIN_VERSION="$PLUGIN_VERSION"
+          fi
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Stage binary
+        run: |
+          case "${{ matrix.os }}" in
+            windows-latest) EXT=dll ;;
+            ubuntu-latest)  EXT=so ;;
+            macos-26-intel)   EXT=dylib ;;
+          esac
+          mkdir -p dist/plugins
+          BIN=$(find build -name "ts3websitepreview_${{ matrix.name }}.${EXT}" -type f | head -n1)
+          cp "$BIN" dist/plugins/
+
+      - name: Fix Qt rpaths (macOS)
+        if: matrix.os == 'macos-26-intel'
+        run: |
+          DYLIB=dist/plugins/ts3websitepreview_mac.dylib
+          install_name_tool -id ts3websitepreview_mac.dylib \
+            -change @rpath/QtWidgets.framework/Versions/5/QtWidgets @rpath/libQt5Widgets.dylib \
+            -change @rpath/QtNetwork.framework/Versions/5/QtNetwork @rpath/libQt5Network.dylib \
+            -change @rpath/QtGui.framework/Versions/5/QtGui       @rpath/libQt5Gui.dylib \
+            -change @rpath/QtCore.framework/Versions/5/QtCore     @rpath/libQt5Core.dylib \
+            "$DYLIB"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version from tag
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Collect all platform binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: stage
+          merge-multiple: true      # merge every job's dist/ into one tree (stage/plugins/...)
+
+      - name: Assemble package
+        run: |
+          cp deploy/package.ini stage/package.ini
+          sed -i "s/<version>/${PLUGIN_VERSION}/g" stage/package.ini
+          echo "=== package contents ==="; find stage -type f | sort
+
+      - name: Zip .ts3_plugin
+        run: |
+          cd stage
+          zip -qq -r "../ts3websitepreview.${GITHUB_REF_NAME}.ts3_plugin" .
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ts3websitepreview.${{ github.ref_name }}.ts3_plugin
+          draft: false
+          prerelease: false
