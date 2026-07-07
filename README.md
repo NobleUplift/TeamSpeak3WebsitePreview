@@ -93,21 +93,43 @@ plugins\
 
 ## Building
 
-Requires **Visual Studio 2022** (toolset v143) with the Desktop C++ workload. The dependency DLLs (`libcurl`, `libxml2`, `libiconv`) and their import libraries are not included in the repository and must be sourced separately. libcurl must be built with the **SChannel** backend (no OpenSSL dependency).
+Requires **Visual Studio 2022** (Desktop C++ workload) and **CMake ≥ 3.21**. The build is
+CMake-based — there is no `.sln`. Two prerequisites must be in place first:
+
+1. **The TS3 SDK submodule** — clone recursively, or initialise it in an existing clone:
+   ```bat
+   git clone --recursive <repo-url>
+   :: or, in an existing clone:
+   git submodule update --init
+   ```
+2. **The vendored dependencies** — the `libcurl`, `libxml2`, and `iconv` headers, import libs, and
+   DLLs are not in the repository. Place them under `third_party/` as described in
+   [third_party/README.md](third_party/README.md). libcurl must use the **SChannel** backend (no OpenSSL).
+
+Build both architectures with the bundled presets (the VS generator is single-arch per build tree,
+so each arch gets its own configure + build):
 
 ```bat
-build_plugin.bat
+cmake --preset win32 && cmake --build --preset win32
+cmake --preset win64 && cmake --build --preset win64
 ```
 
-Or directly via MSBuild:
+Output: `build\win32\out\ts3websitepreview_win32.dll` and `build\win64\out\ts3websitepreview_win64.dll`.
+
+> Assembling the DLL + dependency DLLs into the installable `.ts3_plugin` package is **not** done by
+> the local build — that step is left to CI (a GitHub Actions workflow, to be added). Until then,
+> package by hand following the layout in [CLAUDE.md](CLAUDE.md#ts3-plugin-package-structure).
+
+To also build and run the 23 unit tests, configure with `-DBUILD_TESTS=ON`:
 
 ```bat
-MSBuild.exe ts3websitepreview\ts3websitepreview.vcxproj ^
-    /p:Configuration=Release /p:Platform=x64 ^
-    /p:PlatformToolset=v143 /p:WindowsTargetPlatformVersion=10.0
+cmake -S . -B build\win64 -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=ON
+cmake --build build\win64 --config Release
+ctest --test-dir build\win64 -C Release
 ```
 
-See `CLAUDE.md` for full build, dependency, and packaging instructions.
+Plugin metadata (name, version, author, description) lives in the `project()`/`PLUGIN_*` block at
+the top of `CMakeLists.txt`. See `CLAUDE.md` for full build, dependency, and packaging details.
 
 ---
 

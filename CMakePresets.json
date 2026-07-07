@@ -1,0 +1,24 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "win32",
+      "displayName": "Win32 (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "Win32", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build/win32"
+    },
+    {
+      "name": "win64",
+      "displayName": "x64 (Visual Studio 2022)",
+      "generator": "Visual Studio 17 2022",
+      "architecture": { "value": "x64", "strategy": "set" },
+      "binaryDir": "${sourceDir}/build/win64"
+    }
+  ],
+  "buildPresets": [
+    { "name": "win32", "configurePreset": "win32", "configuration": "Release" },
+    { "name": "win64", "configurePreset": "win64", "configuration": "Release" }
+  ]
+}
