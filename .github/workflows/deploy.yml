@@ -37,7 +37,7 @@ jobs:
           - os: ubuntu-latest
             name: linux_amd64
             qt_arch: gcc_64
-          - os: macos-latest
+          - os: macos-26-intel
             name: mac
             qt_arch: clang_64
     runs-on: ${{ matrix.os }}
@@ -82,14 +82,14 @@ jobs:
           case "${{ matrix.os }}" in
             windows-latest) EXT=dll ;;
             ubuntu-latest)  EXT=so ;;
-            macos-latest)   EXT=dylib ;;
+            macos-26-intel)   EXT=dylib ;;
           esac
           mkdir -p dist/plugins
           BIN=$(find build -name "ts3websitepreview_${{ matrix.name }}.${EXT}" -type f | head -n1)
           cp "$BIN" dist/plugins/
 
       - name: Fix Qt rpaths (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-26-intel'
         run: |
           DYLIB=dist/plugins/ts3websitepreview_mac.dylib
           install_name_tool -id ts3websitepreview_mac.dylib \
