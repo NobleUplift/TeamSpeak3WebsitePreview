@@ -15,10 +15,10 @@
 #include "teamspeak/public_rare_definitions.h"
 #include "ts3_functions.h"
 
-#include "curl.h"
-#include "HTMLparser.h"
-#include "globals.h"
-#include "xpath.h"
+#include <curl/curl.h>
+#include <libxml/HTMLparser.h>
+#include <libxml/globals.h>
+#include <libxml/xpath.h>
 
 #include "plugin.h"
 #include "core.h"
@@ -75,6 +75,46 @@ static struct TS3Functions ts3Functions;
 #define snprintf sprintf_s
 #else
 #define _strcpy(dest, destSize, src) { strncpy(dest, src, destSize-1); (dest)[destSize-1] = '\0'; }
+#endif
+
+#ifndef _WIN32
+/* Non-Windows compat shims: the plugin was written against the Win32 API and
+ * the curl/libxml2 dynamic-loader. On Linux/macOS we link libcurl + libxml2
+ * directly, so the pfn_* indirection collapses to the real functions, and the
+ * few Win32 primitives it uses get portable replacements. */
+#include <time.h>
+typedef unsigned long DWORD;
+#ifndef MAX_PATH
+#define MAX_PATH 1024
+#endif
+#ifndef _TRUNCATE
+#define _TRUNCATE ((size_t)-1)
+#endif
+static DWORD GetTickCount(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (DWORD)(ts.tv_sec * 1000UL + ts.tv_nsec / 1000000UL);
+}
+static void strncpy_s(char* dst, size_t dstsz, const char* src, size_t count) {
+    (void)count;  /* always truncate to fit, like the _TRUNCATE call sites intend */
+    if (dstsz) { strncpy(dst, src, dstsz - 1); dst[dstsz - 1] = '\0'; }
+}
+/* Route the runtime function-pointer calls straight to the linked libraries. */
+#define pfn_curl_global_init       curl_global_init
+#define pfn_curl_easy_init         curl_easy_init
+#define pfn_curl_easy_setopt       curl_easy_setopt
+#define pfn_curl_easy_perform      curl_easy_perform
+#define pfn_curl_easy_strerror     curl_easy_strerror
+#define pfn_curl_easy_cleanup      curl_easy_cleanup
+#define pfn_curl_global_cleanup    curl_global_cleanup
+#define pfn_htmlReadMemory         htmlReadMemory
+#define pfn_xmlXPathNewContext     xmlXPathNewContext
+#define pfn_xmlXPathEvalExpression xmlXPathEvalExpression
+#define pfn_xmlXPathFreeObject     xmlXPathFreeObject
+#define pfn_xmlNodeListGetString   xmlNodeListGetString
+#define pfn_xmlFree                xmlFree
+#define pfn_xmlFreeDoc             xmlFreeDoc
+#define pfn_xmlXPathFreeContext    xmlXPathFreeContext
 #endif
 
 #define PLUGIN_API_VERSION 26
@@ -211,7 +251,13 @@ int ts3plugin_init() {
 			wchar_t* lastSlash = wcsrchr(dllDir, L'\\');
 			if (lastSlash) {
 				lastSlash[1] = L'\0';
-				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview\\");
+				/* Deps live in an arch-specific subdir so a single .ts3_plugin can
+				 * carry both 32- and 64-bit libcurl.dll/libxml2.dll without a name clash. */
+#ifdef _WIN64
+				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview\\win64\\");
+#else
+				wcscat_s(dllDir, MAX_PATH, L"ts3websitepreview\\win32\\");
+#endif
 				{
 					char narrowDir[MAX_PATH];
 					char logMsg[MAX_PATH + 32];
@@ -299,7 +345,11 @@ void ts3plugin_shutdown() {
 /****************************** Optional functions ********************************/
 
 int ts3plugin_offersConfigure() {
-    return 1;
+#ifdef _WIN32
+    return 1;  /* PLUGIN_OFFERS_CONFIGURE_NEW_THREAD — native Win32 settings dialog */
+#else
+    return 0;  /* PLUGIN_OFFERS_NO_CONFIGURE — no native dialog off Windows */
+#endif
 }
 
 #ifdef _WIN32

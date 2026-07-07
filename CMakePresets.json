@@ -15,10 +15,28 @@
       "generator": "Visual Studio 17 2022",
       "architecture": { "value": "x64", "strategy": "set" },
       "binaryDir": "${sourceDir}/build/win64"
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux (x64)",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/linux",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "mac",
+      "displayName": "macOS",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/build/mac",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" }
     }
   ],
   "buildPresets": [
     { "name": "win32", "configurePreset": "win32", "configuration": "Release" },
-    { "name": "win64", "configurePreset": "win64", "configuration": "Release" }
+    { "name": "win64", "configurePreset": "win64", "configuration": "Release" },
+    { "name": "linux", "configurePreset": "linux" },
+    { "name": "mac", "configurePreset": "mac" }
   ]
 }

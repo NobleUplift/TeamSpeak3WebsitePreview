@@ -1,174 +1,108 @@
-# Restructure to CMake + template layout + SDK submodule
+# Cross-platform build (Windows/Linux/macOS) + GitHub Actions CI
 
 ## Context
 
-The project currently builds via a Visual Studio solution (`TeamSpeak 3 Website Preview.sln`)
-with per-project `.vcxproj` files, and vendors the TS3 plugin SDK headers inside
-`ts3websitepreview/include/teamspeak3/` (gitignored, sourced externally). The user wants the
-repo restructured to match the file layout and build model of the
-[TeamSpeak3-Qt-Plugin-Template](https://github.com/Gamer92000/TeamSpeak3-Qt-Plugin-Template):
+The repo was just restructured to CMake + the [Qt-Plugin-Template](https://github.com/Gamer92000/TeamSpeak3-Qt-Plugin-Template)
+layout, but it still builds **Windows-only** and has **no CI**. The template ships a `deploy.yml`
+that builds win64/win32/linux_amd64/mac and publishes a combined `.ts3_plugin` on version tags.
+The user wants the same: add that CI, and make the plugin compile for Linux and macOS.
 
-1. **File layout** — `src/`, `deploy/`, top-level `CMakeLists.txt`, SDK as a submodule dir.
-2. **CMake instead of the MSVC project** — replace `.sln`/`.vcxproj`/`build_plugin.bat`.
-3. **`ts3client-pluginsdk` as a git submodule** — stop vendoring the TS3 headers.
+The template achieves cross-platform trivially because it's a **Qt** plugin (Qt is portable). Ours
+is **C with no Qt**, and it currently uses Windows-only APIs, so this is a genuine C port, not just
+new CMake targets.
 
-**Important deviations from the template** (the template is a *Qt C++* plugin; this is a *C*
-plugin with **no Qt**, a **native Win32 settings dialog**, and **dynamically-loaded
-libcurl + libxml2**): we keep it C, keep the native `.rc` dialog, and the CMakeLists is adapted
-— no Qt / `find_package(Qt5)` / AUTOMOC / `.ui`. Converting to Qt is out of scope (a full
-rewrite the user did not ask for).
+### Portability audit (verified by reading the source)
+- **`src/core.c`** and **`src/plugin.h`** — already cross-platform (`#else` fallbacks / dual export
+  macro). No changes.
+- **`src/plugin.c`** — does **not** compile off Windows: the `pfn_*` curl/libxml2 function pointers
+  are declared only under `#ifdef _WIN32`, yet the call sites are unconditional; plus `DWORD`,
+  `MAX_PATH`, `GetTickCount()`, `strncpy_s`/`_TRUNCATE` are used unguarded, and the settings dialog
+  is Win32. This is the main port.
+- **`src/settings.c`** — Win32 ini APIs (`GetPrivateProfileIntA`/`WritePrivateProfileStringA`),
+  `<windows.h>`, `MAX_PATH`. Needs a portable ini fallback.
+- Local Linux toolchain **has** libcurl 8.21.0 + libxml2 2.15.3 (incl. `globals.h`) → the Linux
+  build (and the unit tests) are **compile/run-testable here**. macOS and MSVC are not.
 
-### Verified facts driving the design
-- **SDK submodule covers all needed headers.** Source includes `teamspeak/*.h`, `ts3_functions.h`,
-  `teamlog/logtypes.h` — all present in `teamspeak/ts3client-pluginsdk` (default branch `master`)
-  under `include/`. The one exception, `teamspeak/clientlib_publicdefinitions.h` (plugin.c:16), is
-  **absent upstream and unused** (the two `int` callback params are not its enum types) → that
-  `#include` gets **deleted**.
-- **curl/libxml2/iconv are 100% dynamically loaded** via `LoadLibraryExW`+`GetProcAddress`
-  ([plugin.c:227-264](ts3websitepreview/plugin.c#L227-L264)). The plugin DLL links **no** import
-  libs for them — only their **headers** are needed to compile. They are not in the SDK and not in
-  the template, so they stay as vendored third-party deps.
-- **The unit tests DO call libxml2 directly** ([test_parse.c](ts3websitepreviewtest/test_parse.c)
-  uses `htmlReadMemory`/`xmlXPath*`/`xmlFree`), so the **test EXE must link `libxml2.lib` + `iconv.lib`**
-  (the plugin DLL does not). The pure functions under test (`GetURLFromMessage`,
-  `WriteMemoryCallback`, `BuildPreviewMessage`) live in `core.c`.
-- Output DLLs must keep the arch suffix: `ts3websitepreview_win32.dll` / `_win64.dll`.
+### Decisions (confirmed / chosen)
+- **Windows CI deps: vcpkg** (`curl[ssl]` → SChannel + `libxml2`). CMake uses `third_party/` when
+  present (local dev, unchanged) and **falls back to `find_package`** when it's absent (CI/vcpkg).
+- **Linux/macOS: direct-link** system libcurl + libxml2 (via `find_package(CURL)` /
+  `find_package(LibXml2)`) — no `dlopen`. The Windows runtime dynamic-load model stays as-is.
+- **No settings dialog off Windows** — `ts3plugin_offersConfigure()` returns 0 there; settings still
+  load from a portable ini. (A Qt dialog would defeat the no-Qt design.)
+- **One combined `.ts3_plugin`** with all four binaries (matches the template). So
+  `deploy/package.ini` `Platforms` goes back to `win64, win32, linux_amd64, mac`. Linux/macOS ship
+  just the `.so`/`.dylib` (deps are system libs); Windows still bundles `libcurl/libxml2/libiconv`
+  DLLs in the `plugins/ts3websitepreview/` subdir.
 
-### Decisions confirmed with the user
-- **Unit tests: keep and wire into CMake** (move to `test/`, optional target behind an option).
-- **CI: skip** — local CMake build only; no `.github/workflows/deploy.yml`.
+## Implementation
 
-## Target file layout
+### 1. `src/plugin.c` — portability shims
+- Change the dep includes to the standard prefixed forms (resolve on Windows via `third_party/include`
+  **and** on Linux/mac via system dirs): `<curl/curl.h>`, `<libxml/HTMLparser.h>`,
+  `<libxml/globals.h>`, `<libxml/xpath.h>`.
+- Add a `#ifndef _WIN32` compat block (after the existing `#ifdef _WIN32` string-macro block): typedef
+  `DWORD`, define `MAX_PATH`/`_TRUNCATE`, a `clock_gettime`-based `GetTickCount()`, a `strncpy_s()`
+  helper, and `#define pfn_<fn> <fn>` for every curl/libxml2 pointer so the unconditional call sites
+  compile and bind directly to the linked libs.
+- `ts3plugin_offersConfigure()` → `#ifdef _WIN32` return 1 `#else` return 0. The Win32 dynamic-load
+  block, `SettingsDlgProc`, and the `DialogBox` call already sit under `#ifdef _WIN32` — leave them.
 
-```
-CMakeLists.txt                 ← new, replaces .sln/.vcxproj
-CMakePresets.json              ← new, win32 + win64 configure/build presets
-.gitmodules                    ← new
-ts3client-pluginsdk/           ← new git submodule (TS3 SDK headers)
-src/
-  core.c  core.h
-  plugin.c  plugin.h
-  settings.c  settings.h  settings.rc  resource.h
-  plugin_version.h.in          ← template for the generated header (replaces build-time gen)
-deploy/
-  package.ini.in               ← was ts3websitepreview/package.ini (placeholders)
-  plugins/.gitkeep
-third_party/                   ← vendored curl+libxml2+iconv (gitignored, sourced externally)
-  include/{curl,libxml}/...
-  lib/    (win32: libxml2.lib, iconv.lib, + runtime dlls libcurl/libxml2/iconv/zlib1)
-  lib64/  (x64:  libxml2.lib, iconv.lib, + runtime dlls libcurl/libxml2/iconv)
-test/
-  main_test.c  test_*.c  unity/unity.c  unity/unity.h  unity/unity_internals.h
-README.md  HISTORY.md  LICENSE.md  CLAUDE.md
-```
+### 2. `src/settings.c` — portable ini
+- Guard `<windows.h>` with `#ifdef _WIN32`; define `MAX_PATH` fallback.
+- `Settings_Load`/`Settings_Save`: keep the Win32 `GetPrivateProfileIntA`/`WritePrivateProfileStringA`
+  path under `#ifdef _WIN32`; add an `#else` using `stdio` — read `Key=Value` lines with `sscanf`
+  (accept optional spaces), write `[Settings]` + the two keys. Same `ts3websitepreview.ini` filename.
 
-Removed: `TeamSpeak 3 Website Preview.sln`, both `.vcxproj`(`.filters`), `build_plugin.bat`,
-`*.vsmdi`, `*.testsettings`, `ts3websitepreview/plugin_version.h` (now generated by CMake),
-`ts3websitepreview/package.ini` (→ `deploy/package.ini.in`), and the old vendored
-`ts3websitepreview/include/teamspeak3/` tree (→ submodule).
+### 3. `CMakeLists.txt` — three-platform build
+- `project(... LANGUAGES C)`; `enable_language(RC)` only `if(WIN32)`. Make `PLUGIN_VERSION` a
+  `CACHE STRING` so CI can pass `-DPLUGIN_VERSION=<tag>`.
+- Platform suffix: `APPLE→mac`, `WIN32→win32/win64` (by `CMAKE_SIZEOF_VOID_P`), else `linux_amd64`
+  (or `linux_x86`). Set `OUTPUT_NAME ts3websitepreview_${suffix}`, `PREFIX ""`, and `SUFFIX`
+  `.dll`/`.so`/`.dylib` per platform — so CMake emits the final TS3 name directly (no CI rename).
+- Sources: `core.c plugin.c settings.c`, appending `settings.rc` only `if(WIN32)`.
+- **Windows branch**: keep MSVC defines / `MSVC_RUNTIME_LIBRARY` (/MD) / IPO / dynamic-load model
+  (link no dep libs). Headers: `if(EXISTS third_party/include/curl/curl.h)` use `third_party/include`,
+  `else()` `find_package(CURL/LibXml2)` for **include dirs only** (vcpkg headers; DLLs shipped by CI).
+- **Linux/macOS branch**: `find_package(CURL REQUIRED)` + `find_package(LibXml2 REQUIRED)`;
+  `target_link_libraries(... CURL::libcurl LibXml2::LibXml2)`; define `TS3WEBSITEPREVIEW_EXPORTS`.
+- Test target (`BUILD_TESTS`): same header logic; **link** libxml2 (+curl) — on Windows the
+  `third_party`/vcpkg libs, on Linux/mac `CURL::libcurl LibXml2::LibXml2` — since `test_parse.c` calls
+  libxml2 directly. (Enables running the suite locally on Linux.)
 
-## Implementation steps
+### 4. `deploy/package.ini` — restore all platforms
+`Platforms = win64, win32, linux_amd64, mac` (keep the `<version>` placeholder + our metadata).
 
-### 1. Add the SDK submodule
-- `git submodule add https://github.com/teamspeak/ts3client-pluginsdk ts3client-pluginsdk`
-- Creates `.gitmodules` (mirrors the template's entry). *(Network action — the one online step.)*
+### 5. `.github/workflows/deploy.yml` — new CI (adapted from the template, Qt removed)
+- `on: push: tags: ['v*']`.
+- **build** matrix — `windows-latest`(x64,x86), `ubuntu-latest`, `macos-latest`; checkout with
+  `submodules: true`:
+  - Windows: `ilammy/msvc-dev-cmd`; vcpkg `install curl[ssl] libxml2:<triplet>`; configure with the
+    vcpkg toolchain + `-A x64|Win32`; collect the built DLL **and** vcpkg's `libcurl.dll` / `libxml2.dll`
+    / `iconv`(→`libiconv.dll`) runtime DLLs.
+  - Linux: `apt-get install -y libcurl4-openssl-dev libxml2-dev`; configure + build.
+  - macOS: `brew install curl libxml2` (or system); configure + build. No `install_name_tool` (no Qt).
+  - All: `-DPLUGIN_VERSION=${GITHUB_REF_NAME#v}`, `--config Release`; `upload-artifact` the
+    `ts3websitepreview_*.{dll,so,dylib}` (+ Windows dep DLLs).
+- **release** job: download artifacts; stage into `deploy/plugins/` (main binaries flat; Windows dep
+  DLLs into `deploy/plugins/ts3websitepreview/`); `sed` `<version>`→tag in `deploy/package.ini`;
+  `zip -r` the **contents** of `deploy/` → `ts3websitepreview.<tag>.ts3_plugin` (Linux `zip` gives
+  forward-slash + Deflate, satisfying TS3); `softprops/action-gh-release`.
 
-### 2. Move sources into `src/` and `test/`
-- `git mv` the six source files + `resource.h` from `ts3websitepreview/` to `src/`.
-- `git mv` the Unity test files from `ts3websitepreviewtest/` to `test/` (keep `test/unity/`).
-- Delete the old `ts3websitepreview/` and `ts3websitepreviewtest/` project dirs and their
-  `.vcxproj*`.
-
-### 3. Edit the sources (minimal)
-- **plugin.c:16** — delete `#include "teamspeak/clientlib_publicdefinitions.h"` (unused, absent upstream).
-- No other source edits: include spellings (`"curl.h"`, `"HTMLparser.h"`, `"teamspeak/..."`,
-  `"ts3_functions.h"`, `"plugin_version.h"`) all still resolve via the include dirs CMake sets.
-
-### 4. Metadata → CMake single source of truth
-- Set as CMake variables at the top of `CMakeLists.txt`: `PLUGIN_NAME="Website Preview"`,
-  `PLUGIN_TYPE="Plugin"`, `PLUGIN_VERSION="3.0"`, `PLUGIN_AUTHOR="NobleUplift (Patrick Seiter)"`,
-  `PLUGIN_DESCRIPTION="Fetches the title ..."`. (Replaces the vcxproj `PluginInfo` PropertyGroup.)
-- `src/plugin_version.h.in` (configured to `${CMAKE_BINARY_DIR}/generated/plugin_version.h`):
-  ```c
-  #ifndef PLUGIN_VERSION_H
-  #define PLUGIN_VERSION_H
-  #define PLUGIN_NAME        "@PLUGIN_NAME@"
-  #define PLUGIN_NAME_W      L"@PLUGIN_NAME@"
-  #define PLUGIN_VERSION_STR "@PLUGIN_VERSION@"
-  #define PLUGIN_AUTHOR      "@PLUGIN_AUTHOR@"
-  #define PLUGIN_DESCRIPTION "@PLUGIN_DESCRIPTION@"
-  #endif
-  ```
-- `deploy/package.ini.in` (configured per-arch into the staging dir; `@ARCH_SUFFIX@` = `win32`/`win64`):
-  ```ini
-  Name = @PLUGIN_NAME@
-  Type = @PLUGIN_TYPE@
-  Author = @PLUGIN_AUTHOR@
-  Version = @PLUGIN_VERSION@
-  Platforms = @ARCH_SUFFIX@
-  Description = "@PLUGIN_DESCRIPTION@"
-  ```
-
-### 5. `CMakeLists.txt` (C project, MSVC + RC, no Qt)
-Key elements (exact text finalized against the Plan agent's cross-check):
-- `cmake_minimum_required(VERSION 3.21)`, `project(ts3websitepreview C)`, `enable_language(RC)`.
-- Arch detection via `CMAKE_SIZEOF_VOID_P` → `ARCH_SUFFIX` (`win64`/`win32`) and third-party libdir
-  (`lib64`/`lib`).
-- `configure_file` for `plugin_version.h` and the per-arch `package.ini`.
-- `add_library(ts3websitepreview SHARED core.c plugin.c settings.c settings.rc)`;
-  `OUTPUT_NAME ts3websitepreview_${ARCH_SUFFIX}` (→ `..._win32.dll`/`_win64.dll`).
-- `target_include_directories`: `ts3client-pluginsdk/include`, `third_party/include`,
-  `third_party/include/curl`, `third_party/include/libxml`, `src`, `${CMAKE_BINARY_DIR}/generated`.
-  (Both `third_party/include` **and** the `curl`/`libxml` subdirs are needed: source uses bare
-  `"curl.h"`/`"HTMLparser.h"`, while libxml/curl headers cross-include as `<libxml/...>`/`<curl/...>`.)
-- `target_compile_definitions`: `WIN32 _WINDOWS _USRDLL TS3WEBSITEPREVIEW_EXPORTS WINDOWS UNICODE _UNICODE`.
-- Runtime library `/MD` (CMake default for MSVC Release — matches the old build; **not** the
-  template's `/MT`), Release `/O2`.
-- **No** curl/libxml2 import libs linked. Link `user32` explicitly (Win32 dialog APIs) alongside the
-  MSVC default system libs.
-- **Packaging** (`POST_BUILD` custom command, reusing the project's known-good PowerShell
-  `ZipArchive` approach — it already satisfies the strict `.ts3_plugin` ZIP rules: forward-slash
-  entries, standard Deflate, no double-nested root, ASCII names, `.dll`/`.ini` only):
-  1. stage `plugins/ts3websitepreview_${ARCH}.dll` + subdir `plugins/ts3websitepreview/` with
-     `libcurl.dll`, `libxml2.dll`, `iconv.dll`→`libiconv.dll` (and `zlib1.dll` for win32);
-  2. drop the configured `package.ini` at staging root;
-  3. zip staging **contents** → `${CMAKE_BINARY_DIR}/ts3websitepreview_${ARCH}.ts3_plugin`.
-
-### 6. Optional test target
-```cmake
-option(BUILD_TESTS "Build Unity unit tests" OFF)
-```
-When on: `add_executable(ts3websitepreviewtest test/main_test.c test/test_*.c test/unity/unity.c src/core.c)`,
-include dirs `test/unity` + the `third_party` curl/libxml dirs + `src`, **link
-`third_party/${libdir}/libxml2.lib` + `iconv.lib`** (tests call libxml2 directly), `enable_testing()`,
-`add_test(NAME unit COMMAND ts3websitepreviewtest)`. Run with `ctest` / the EXE (exit 0 on pass).
-
-### 7. `CMakePresets.json` + docs
-- Two configure presets (`win32` → `architecture Win32`, `win64` → `x64`, generator
-  "Visual Studio 17 2022") and matching build presets, so both `.ts3_plugin`s come from:
-  ```
-  cmake --preset win32 && cmake --build --preset win32
-  cmake --preset win64 && cmake --build --preset win64
-  ```
-- Update `.gitignore`: drop the MSVC-specific noise, add `build/`, `/third_party/`, keep the
-  `.claude/` rules; keep ignoring `*.dll`/`*.lib`.
-- Update `README.md` + `CLAUDE.md` build/layout sections to describe the CMake flow, the submodule
-  (`git clone --recursive` / `git submodule update --init`), and the `third_party/` external deps.
+### 6. Presets & docs
+- `CMakePresets.json`: add `linux` / `mac` configure+build presets (default generator, host
+  `condition`); Windows presets unchanged.
+- Update `README.md` + `CLAUDE.md`: cross-platform build commands, the vcpkg-vs-`third_party`
+  Windows fallback, "no settings dialog off Windows", and the CI/release flow.
 
 ## Verification
-This is a Windows/MSVC build and cannot be compiled in this Linux environment, so verification is
-by the user on Windows:
-1. `git submodule update --init` → confirm `ts3client-pluginsdk/include/ts3_functions.h` exists.
-2. Place the external `third_party/` curl+libxml2+iconv headers/libs/dlls.
-3. `cmake --preset win64 && cmake --build --preset win64 --config Release` → produces
-   `build/win64/ts3websitepreview_win64.ts3_plugin`; repeat for `win32`.
-4. Inspect the `.ts3_plugin` ZIP: `package.ini` at root, `plugins/ts3websitepreview_win64.dll`,
-   `plugins/ts3websitepreview/{libcurl,libxml2,libiconv}.dll`; entry names use `/`.
-5. `cmake --preset win64 -DBUILD_TESTS=ON && cmake --build --preset win64 && ctest` → 23 tests pass.
-6. Close TS3, install the `.ts3_plugin`, send `[URL]https://example.com[/URL]` in chat → title is
-   prepended (end-to-end sanity, same as before the restructure).
-
-## Sanity-check note
-Static verification only (no local Windows build). The CMake text is cross-checked by a Plan agent;
-the packaging reuses the already-proven PowerShell zip logic to de-risk the one behavior TS3 is
-strict about.
+- **Local (real):** `cmake -S . -B build/linux -DBUILD_TESTS=ON && cmake --build build/linux` — must
+  compile `plugin.c`+`settings.c`+`core.c` clean against system libcurl/libxml2, producing
+  `build/linux/out/ts3websitepreview_linux_amd64.so`. Then `ctest --test-dir build/linux` → 23 tests
+  pass. This exercises the entire non-Windows port.
+- **Cannot test here:** macOS build, MSVC build (vcpkg + `third_party` fallback), and the Actions
+  workflow itself — CI always needs real-run iteration. These are delivered as a best-effort first
+  cut; note in the summary that the first tag push will likely need CI touch-ups (esp. vcpkg DLL
+  collection + the release staging paths).
+- Windows regression check (by user): local `third_party` build still produces the same
+  `ts3websitepreview_win64.dll` and behaves as before (dynamic load unchanged).

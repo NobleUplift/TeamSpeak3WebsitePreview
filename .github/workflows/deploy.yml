@@ -1,0 +1,147 @@
+name: Build and Deploy
+
+# Builds the plugin for win64/win32/linux_amd64/mac and publishes a single
+# combined .ts3_plugin as a GitHub release when a v* tag is pushed.
+#
+# Adapted from https://github.com/Gamer92000/TeamSpeak3-Qt-Plugin-Template :
+#   - no Qt (this is a C plugin); instead each platform provisions libcurl + libxml2
+#     (Windows via vcpkg -> ships the DLLs; Linux/macOS via system packages -> linked),
+#   - CMake already emits the final ts3websitepreview_<suffix>.<ext> name, so no rename,
+#   - Windows dependency DLLs go in an arch subdir (plugins/ts3websitepreview/win64|win32)
+#     so 32- and 64-bit libcurl.dll/libxml2.dll can coexist in one package.
+#
+# NOTE: CI always needs real-run iteration. The first tag push may need touch-ups,
+# especially the vcpkg DLL set (Windows) and libxml2 discovery (macOS).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: win64
+            cmake_arch: x64
+            vcpkg_triplet: x64-windows
+          - os: windows-latest
+            name: win32
+            cmake_arch: Win32
+            vcpkg_triplet: x86-windows
+          - os: ubuntu-latest
+            name: linux_amd64
+          - os: macos-latest
+            name: mac
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Version from tag
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      # ---- Windows: MSVC + vcpkg (curl[schannel] + libxml2) ----
+      - name: Setup MSVC
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.name == 'win64' && 'x64' || 'x86' }}
+      - name: Install deps (vcpkg)
+        if: matrix.os == 'windows-latest'
+        run: vcpkg install curl libxml2 --triplet ${{ matrix.vcpkg_triplet }}
+
+      # ---- Linux: system libcurl + libxml2 ----
+      - name: Install deps (apt)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev libxml2-dev
+
+      # ---- macOS: system libcurl; libxml2 via brew ----
+      - name: Install deps (brew)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install libxml2 pkg-config
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix libxml2)" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cmake -S . -B build -A ${{ matrix.cmake_arch }} \
+              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" \
+              -DVCPKG_TARGET_TRIPLET=${{ matrix.vcpkg_triplet }} \
+              -DPLUGIN_VERSION="$PLUGIN_VERSION"
+          else
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPLUGIN_VERSION="$PLUGIN_VERSION"
+          fi
+      - name: Build
+        run: cmake --build build --config Release
+
+      # ---- Stage this job's outputs into the final package layout ----
+      - name: Stage
+        run: |
+          case "${{ matrix.os }}" in
+            windows-latest) EXT=dll ;;
+            ubuntu-latest)  EXT=so ;;
+            macos-latest)   EXT=dylib ;;
+          esac
+          mkdir -p dist/plugins
+          # Match the binary extension exactly so the Windows import .lib/.exp are not picked up.
+          BIN=$(find build -name "ts3websitepreview_${{ matrix.name }}.${EXT}" -type f | head -n1)
+          cp "$BIN" dist/plugins/
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Bundle the vcpkg runtime DLLs in an arch-specific subdir.
+            mkdir -p "dist/plugins/ts3websitepreview/${{ matrix.name }}"
+            cp "$VCPKG_INSTALLATION_ROOT/installed/${{ matrix.vcpkg_triplet }}/bin/"*.dll \
+               "dist/plugins/ts3websitepreview/${{ matrix.name }}/"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Version from tag
+        run: echo "PLUGIN_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Collect all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: stage
+          merge-multiple: true      # merge every job's dist/ into one tree (stage/plugins/...)
+
+      - name: Assemble package
+        run: |
+          cp deploy/package.ini stage/package.ini
+          sed -i "s/<version>/${PLUGIN_VERSION}/g" stage/package.ini
+          echo "=== package contents ==="; find stage -type f | sort
+
+      - name: Zip .ts3_plugin
+        run: |
+          cd stage
+          zip -qq -r "../ts3websitepreview.${GITHUB_REF_NAME}.ts3_plugin" .
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ts3websitepreview.${{ github.ref_name }}.ts3_plugin
+          draft: false
+          prerelease: false

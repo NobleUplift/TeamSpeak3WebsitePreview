@@ -66,66 +66,79 @@ Settings are saved to `%AppData%\TS3Client\config\plugins\ts3websitepreview.ini`
 
 ## Installation
 
-Download the `.ts3_plugin` package for your architecture and double-click it while TeamSpeak 3 is **closed**.
+Download the `.ts3_plugin` package and double-click it while TeamSpeak 3 is **closed**. One package
+covers all platforms — TS3 loads the binary matching the client's OS/arch.
 
 > **Note:** Installing while TS3 is running shows a misleading "Fail to install Add-On. Do you want to retry as Administrator?" prompt — running as Administrator does not help. Close TS3 first, then install.
 
-Manual layout (if installing by hand into `%AppData%\TS3Client\plugins\`):
+Package layout (what the `.ts3_plugin` ZIP contains):
 
 ```
-plugins\
-  ts3websitepreview_win64.dll       ← main plugin DLL (_win32.dll for 32-bit TS3)
-  ts3websitepreview\
-    libcurl.dll
-    libxml2.dll
-    libiconv.dll
-    zlib1.dll                       ← Win32 only
+package.ini
+plugins/
+  ts3websitepreview_win64.dll        ← Windows binaries (name suffix per arch)
+  ts3websitepreview_win32.dll
+  ts3websitepreview_linux_amd64.so   ← Linux / macOS binaries
+  ts3websitepreview_mac.dylib
+  ts3websitepreview/                 ← Windows-only bundled deps, in arch subdirs
+    win64/  (libcurl.dll, libxml2.dll, + their runtime DLLs)
+    win32/  (libcurl.dll, libxml2.dll, + their runtime DLLs)
 ```
+
+On Windows the plugin loads its bundled `libcurl`/`libxml2` at runtime from the arch subdir. On
+Linux/macOS it links the system libcurl + libxml2, so no dependency files are bundled.
 
 ---
 
 ## Requirements
 
 - **TeamSpeak 3** 3.6.2 or later (Plugin API 26)
-- **Windows** (Win32 or x64) — the plugin has no macOS or Linux build
+- **Windows** (Win32 / x64), **Linux** (x86-64), or **macOS**
+- The **settings dialog is Windows-only** (native Win32). On Linux/macOS the plugin runs with its
+  saved settings and no in-client configure button; edit `ts3websitepreview.ini` in the plugin's
+  config dir to change them.
 
 ---
 
 ## Building
 
-Requires **Visual Studio 2022** (Desktop C++ workload) and **CMake ≥ 3.21**. The build is
-CMake-based — there is no `.sln`. Two prerequisites must be in place first:
+The build is **CMake-based** (CMake ≥ 3.21) — there is no `.sln`. First get the **TS3 SDK submodule**
+(both `libcurl` and `libxml2` are needed on every platform):
 
-1. **The TS3 SDK submodule** — clone recursively, or initialise it in an existing clone:
-   ```bat
-   git clone --recursive <repo-url>
-   :: or, in an existing clone:
-   git submodule update --init
-   ```
-2. **The vendored dependencies** — the `libcurl`, `libxml2`, and `iconv` headers, import libs, and
-   DLLs are not in the repository. Place them under `third_party/` as described in
-   [third_party/README.md](third_party/README.md). libcurl must use the **SChannel** backend (no OpenSSL).
+```sh
+git clone --recursive <repo-url>
+# or, in an existing clone:
+git submodule update --init
+```
 
-Build both architectures with the bundled presets (the VS generator is single-arch per build tree,
-so each arch gets its own configure + build):
+**Windows** — Visual Studio 2022 (Desktop C++ workload). Supply `libcurl` + `libxml2` + `iconv`
+(headers, import libs, DLLs) under `third_party/` as described in
+[third_party/README.md](third_party/README.md); libcurl must use the **SChannel** backend (no OpenSSL).
+The VS generator is single-arch per build tree, so build each arch separately:
 
 ```bat
 cmake --preset win32 && cmake --build --preset win32
 cmake --preset win64 && cmake --build --preset win64
 ```
 
-Output: `build\win32\out\ts3websitepreview_win32.dll` and `build\win64\out\ts3websitepreview_win64.dll`.
+**Linux** — install system deps, then build:
 
-> Assembling the DLL + dependency DLLs into the installable `.ts3_plugin` package is **not** done by
-> the local build — that step is left to CI (a GitHub Actions workflow, to be added). Until then,
-> package by hand following the layout in [CLAUDE.md](CLAUDE.md#ts3-plugin-package-structure).
+```sh
+sudo apt-get install -y libcurl4-openssl-dev libxml2-dev   # Debian/Ubuntu
+cmake --preset linux && cmake --build --preset linux
+```
 
-To also build and run the 23 unit tests, configure with `-DBUILD_TESTS=ON`:
+**macOS** — `brew install libxml2` (libcurl is system), then `cmake --preset mac && cmake --build --preset mac`.
 
-```bat
-cmake -S . -B build\win64 -G "Visual Studio 17 2022" -A x64 -DBUILD_TESTS=ON
-cmake --build build\win64 --config Release
-ctest --test-dir build\win64 -C Release
+Output binary: `build/<preset>/out/ts3websitepreview_<suffix>{.dll,.so,.dylib}`. Assembling all
+platforms into one installable `.ts3_plugin` is done by CI
+([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) on a `v*` tag push.
+
+To also build and run the 32 unit tests, add `-DBUILD_TESTS=ON` and run via CTest — e.g. on Linux:
+
+```sh
+cmake --preset linux -DBUILD_TESTS=ON && cmake --build --preset linux
+ctest --test-dir build/linux --output-on-failure
 ```
 
 Plugin metadata (name, version, author, description) lives in the `project()`/`PLUGIN_*` block at
