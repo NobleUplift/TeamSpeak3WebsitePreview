@@ -1,3 +1,6 @@
 [submodule "ts3client-pluginsdk"]
 	path = ts3client-pluginsdk
 	url = https://github.com/teamspeak/ts3client-pluginsdk
+[submodule "third_party/gumbo-parser"]
+	path = third_party/gumbo-parser
+	url = https://github.com/google/gumbo-parser

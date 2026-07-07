@@ -13,11 +13,6 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 
-# Vendored third-party deps (libcurl + libxml2 + iconv) — sourced externally.
-# See third_party/README.md for the expected layout.
-/third_party/*
-!/third_party/README.md
-
 # Generated plugin package
 *.ts3_plugin
 

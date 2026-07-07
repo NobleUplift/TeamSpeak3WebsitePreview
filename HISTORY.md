@@ -9,6 +9,13 @@ A TeamSpeak 3 client plugin that intercepts outbound chat messages containing ba
 
 This project took approximately **14.5 years** from inception to a stable, correctly packaged, working state. The rest of this document is a forensic account of every reason why.
 
+> **Note:** This document describes the original **C + libcurl + libxml2 + Win32** implementation
+> (v1–v3.x) and the Windows packaging problems it ran into. The plugin was later **rewritten on Qt**
+> (`QNetworkAccessManager` + the Gumbo HTML5 parser + `QDialog`/`QSettings`), which removed libcurl,
+> libxml2, the dynamic-DLL loading, and all the dependency-bundling issues below. For the current
+> architecture and build, see [README.md](README.md) and [CLAUDE.md](CLAUDE.md); the account below is
+> kept as historical record.
+
 ---
 
 ## Why This Plugin Did Not Work For Over A Decade

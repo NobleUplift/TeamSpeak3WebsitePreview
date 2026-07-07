@@ -1,108 +1,88 @@
-# Cross-platform build (Windows/Linux/macOS) + GitHub Actions CI
+# Rewrite on Qt — drop libcurl + libxml2 + all Win32 code
 
 ## Context
 
-The repo was just restructured to CMake + the [Qt-Plugin-Template](https://github.com/Gamer92000/TeamSpeak3-Qt-Plugin-Template)
-layout, but it still builds **Windows-only** and has **no CI**. The template ships a `deploy.yml`
-that builds win64/win32/linux_amd64/mac and publishes a combined `.ts3_plugin` on version tags.
-The user wants the same: add that CI, and make the plugin compile for Linux and macOS.
+The plugin works cross-platform now, but only via **many `#ifdef _WIN32` blocks** — which the user
+dislikes. The root cause is the deliberate *no-Qt* design: it hand-rolls HTTP (libcurl, loaded via a
+~40-line Windows `LoadLibraryExW` block), HTML parsing (libxml2), a native Win32 settings dialog, a
+Win32 `.ini`, and `wchar`/`strncpy_s`/`GetTickCount` shims. The [Qt-Plugin-Template](https://github.com/Gamer92000/TeamSpeak3-Qt-Plugin-Template)
+has almost no `#ifdef`s because **Qt** does the portable lifting — and the TS3 3.6.2 client already
+ships Qt 5.15.2, so Qt is available to the plugin.
 
-The template achieves cross-platform trivially because it's a **Qt** plugin (Qt is portable). Ours
-is **C with no Qt**, and it currently uses Windows-only APIs, so this is a genuine C port, not just
-new CMake targets.
+**Decision (confirmed):** go Qt like the template, and **drop libxml2 too** — parse with Qt. End
+state: **zero platform `#ifdef`s, zero native dependencies** (pure Qt; Qt provided by the client), and
+the `.ts3_plugin` is literally just the four platform binaries + `package.ini` (no bundled DLLs, no
+`third_party/`, no dynamic loading).
 
-### Portability audit (verified by reading the source)
-- **`src/core.c`** and **`src/plugin.h`** — already cross-platform (`#else` fallbacks / dual export
-  macro). No changes.
-- **`src/plugin.c`** — does **not** compile off Windows: the `pfn_*` curl/libxml2 function pointers
-  are declared only under `#ifdef _WIN32`, yet the call sites are unconditional; plus `DWORD`,
-  `MAX_PATH`, `GetTickCount()`, `strncpy_s`/`_TRUNCATE` are used unguarded, and the settings dialog
-  is Win32. This is the main port.
-- **`src/settings.c`** — Win32 ini APIs (`GetPrivateProfileIntA`/`WritePrivateProfileStringA`),
-  `<windows.h>`, `MAX_PATH`. Needs a portable ini fallback.
-- Local Linux toolchain **has** libcurl 8.21.0 + libxml2 2.15.3 (incl. `globals.h`) → the Linux
-  build (and the unit tests) are **compile/run-testable here**. macOS and MSVC are not.
+**Locally verifiable:** Qt5 Widgets + Network **5.15.19** is installed here (`moc`,
+`Qt5WidgetsConfig.cmake`) — so the plugin and the parser tests compile *and run* on Linux.
 
-### Decisions (confirmed / chosen)
-- **Windows CI deps: vcpkg** (`curl[ssl]` → SChannel + `libxml2`). CMake uses `third_party/` when
-  present (local dev, unchanged) and **falls back to `find_package`** when it's absent (CI/vcpkg).
-- **Linux/macOS: direct-link** system libcurl + libxml2 (via `find_package(CURL)` /
-  `find_package(LibXml2)`) — no `dlopen`. The Windows runtime dynamic-load model stays as-is.
-- **No settings dialog off Windows** — `ts3plugin_offersConfigure()` returns 0 there; settings still
-  load from a portable ini. (A Qt dialog would defeat the no-Qt design.)
-- **One combined `.ts3_plugin`** with all four binaries (matches the template). So
-  `deploy/package.ini` `Platforms` goes back to `win64, win32, linux_amd64, mac`. Linux/macOS ship
-  just the `.so`/`.dylib` (deps are system libs); Windows still bundles `libcurl/libxml2/libiconv`
-  DLLs in the `plugins/ts3websitepreview/` subdir.
+## What changes
 
-## Implementation
+- **Language:** the plugin becomes **C++** (`plugin.cpp`) so it can use Qt. `core.c` stays C (pure
+  string logic — already portable and tested); `core.h` gets `extern "C"` guards.
+- **Fetch:** `QNetworkAccessManager` (redirects on, user-agent), run synchronously via a local
+  `QEventLoop` per request — replaces `GetHTML()`, libcurl, and the entire Windows dynamic-load block.
+- **Parse:** `QRegularExpression` over the response for `<title>` and `og:title/description/image` —
+  new `src/webparse.{h,cpp}` (`QString` in/out), replaces the libxml2 `htmlReadMemory`+XPath code.
+- **Settings dialog:** a `QDialog` (`src/config.{h,cpp}`, two checkboxes + OK/Cancel, built
+  programmatically — no `.ui`), mirroring the template's `config` class. Shown from
+  `ts3plugin_configure()`; `ts3plugin_offersConfigure()` returns `PLUGIN_OFFERS_CONFIGURE_QT_THREAD`
+  on every platform.
+- **Settings storage:** `QSettings(IniFormat)` at the plugin path (same `ts3websitepreview.ini`
+  filename) — replaces the Win32 `GetPrivateProfileInt`/`WritePrivateProfile` code.
+- **`ts3plugin_name()`** just returns `PLUGIN_NAME` (already UTF-8) — drops `wcharToUtf8` + `PLUGIN_NAME_W`.
 
-### 1. `src/plugin.c` — portability shims
-- Change the dep includes to the standard prefixed forms (resolve on Windows via `third_party/include`
-  **and** on Linux/mac via system dirs): `<curl/curl.h>`, `<libxml/HTMLparser.h>`,
-  `<libxml/globals.h>`, `<libxml/xpath.h>`.
-- Add a `#ifndef _WIN32` compat block (after the existing `#ifdef _WIN32` string-macro block): typedef
-  `DWORD`, define `MAX_PATH`/`_TRUNCATE`, a `clock_gettime`-based `GetTickCount()`, a `strncpy_s()`
-  helper, and `#define pfn_<fn> <fn>` for every curl/libxml2 pointer so the unconditional call sites
-  compile and bind directly to the linked libs.
-- `ts3plugin_offersConfigure()` → `#ifdef _WIN32` return 1 `#else` return 0. The Win32 dynamic-load
-  block, `SettingsDlgProc`, and the `DialogBox` call already sit under `#ifdef _WIN32` — leave them.
+## Files
 
-### 2. `src/settings.c` — portable ini
-- Guard `<windows.h>` with `#ifdef _WIN32`; define `MAX_PATH` fallback.
-- `Settings_Load`/`Settings_Save`: keep the Win32 `GetPrivateProfileIntA`/`WritePrivateProfileStringA`
-  path under `#ifdef _WIN32`; add an `#else` using `stdio` — read `Key=Value` lines with `sscanf`
-  (accept optional spaces), write `[Settings]` + the two keys. Same `ts3websitepreview.ini` filename.
+**Removed:** `src/settings.c`, `src/settings.h`, `src/settings.rc`, `src/resource.h` (→ Qt dialog +
+`QSettings`); `third_party/README.md` and the `third_party/` gitignore rules; `test/test_callback.c`
+(tested the curl write-callback — gone) and `test/test_parse.c` (tested libxml2 XPath — gone).
 
-### 3. `CMakeLists.txt` — three-platform build
-- `project(... LANGUAGES C)`; `enable_language(RC)` only `if(WIN32)`. Make `PLUGIN_VERSION` a
-  `CACHE STRING` so CI can pass `-DPLUGIN_VERSION=<tag>`.
-- Platform suffix: `APPLE→mac`, `WIN32→win32/win64` (by `CMAKE_SIZEOF_VOID_P`), else `linux_amd64`
-  (or `linux_x86`). Set `OUTPUT_NAME ts3websitepreview_${suffix}`, `PREFIX ""`, and `SUFFIX`
-  `.dll`/`.so`/`.dylib` per platform — so CMake emits the final TS3 name directly (no CI rename).
-- Sources: `core.c plugin.c settings.c`, appending `settings.rc` only `if(WIN32)`.
-- **Windows branch**: keep MSVC defines / `MSVC_RUNTIME_LIBRARY` (/MD) / IPO / dynamic-load model
-  (link no dep libs). Headers: `if(EXISTS third_party/include/curl/curl.h)` use `third_party/include`,
-  `else()` `find_package(CURL/LibXml2)` for **include dirs only** (vcpkg headers; DLLs shipped by CI).
-- **Linux/macOS branch**: `find_package(CURL REQUIRED)` + `find_package(LibXml2 REQUIRED)`;
-  `target_link_libraries(... CURL::libcurl LibXml2::LibXml2)`; define `TS3WEBSITEPREVIEW_EXPORTS`.
-- Test target (`BUILD_TESTS`): same header logic; **link** libxml2 (+curl) — on Windows the
-  `third_party`/vcpkg libs, on Linux/mac `CURL::libcurl LibXml2::LibXml2` — since `test_parse.c` calls
-  libxml2 directly. (Enables running the suite locally on Linux.)
+**New:**
+- `src/plugin.cpp` (replaces `src/plugin.c`) — C++; TS3 API entry points wrapped `extern "C"`; the
+  `onTextMessageEvent` flow reused as-is but fetch=Qt, parse=`webparse`, and it calls into `core.c`
+  for URL extraction / message building.
+- `src/config.h` + `src/config.cpp` — the `QDialog` settings dialog (`Q_OBJECT`, `QSettings`).
+- `src/webparse.h` + `src/webparse.cpp` — `extractTitle()` / `extractOgProperty()` via `QRegularExpression`.
+- `test/test_webparse.cpp` — a small **QtTest** exercising the parser on sample HTML (well-formed,
+  missing-og, malformed) so parse coverage isn't lost.
 
-### 4. `deploy/package.ini` — restore all platforms
-`Platforms = win64, win32, linux_amd64, mac` (keep the `<version>` placeholder + our metadata).
+**Changed:**
+- `src/core.c` — unchanged logic; **remove `WriteMemoryCallback`** (curl-only). Keep
+  `GetURLFromMessage`, `BuildPreviewMessage`, `FindURLsInMessage`, `BuildMessageWithInlineTitles`.
+  `src/core.h` — add `extern "C"` guards.
+- `src/plugin.h` — keep the dual `PLUGINS_EXPORTDLL` macro and the `ts3plugin_*` declarations; drop
+  nothing else structural.
+- `CMakeLists.txt` — `find_package(Qt5 REQUIRED COMPONENTS Widgets Network)`, `CMAKE_AUTOMOC ON`,
+  `CMAKE_CXX_STANDARD 17`; the target is now C+C++ (`core.c` compiled as C); `target_link_libraries(...
+  Qt5::Widgets Qt5::Network)`; **delete all `third_party` / curl / libxml2 / RC / dynamic-load logic**.
+  Keep the platform suffix/extension naming and `plugin_version.h` generation. Two test targets: the
+  Unity C core tests + the QtTest webparse test, both under `ctest`.
+- `.github/workflows/deploy.yml` — replace vcpkg/apt/brew steps with **`jurplel/install-qt-action@v3`**
+  (`version: 5.15.2`, per-platform `arch` like the template); re-add the macOS `install_name_tool`
+  Qt-rpath fix (from the template); the `release` job now stages just the four binaries + `package.ini`
+  into `plugins/` (no `ts3websitepreview/` dep subdir) before zipping.
+- `README.md` / `CLAUDE.md` — rewrite Build / dependencies / architecture: Qt-based, no native deps,
+  no dynamic loading, no settings.rc, package = binaries only. Correct the (now different) test set.
 
-### 5. `.github/workflows/deploy.yml` — new CI (adapted from the template, Qt removed)
-- `on: push: tags: ['v*']`.
-- **build** matrix — `windows-latest`(x64,x86), `ubuntu-latest`, `macos-latest`; checkout with
-  `submodules: true`:
-  - Windows: `ilammy/msvc-dev-cmd`; vcpkg `install curl[ssl] libxml2:<triplet>`; configure with the
-    vcpkg toolchain + `-A x64|Win32`; collect the built DLL **and** vcpkg's `libcurl.dll` / `libxml2.dll`
-    / `iconv`(→`libiconv.dll`) runtime DLLs.
-  - Linux: `apt-get install -y libcurl4-openssl-dev libxml2-dev`; configure + build.
-  - macOS: `brew install curl libxml2` (or system); configure + build. No `install_name_tool` (no Qt).
-  - All: `-DPLUGIN_VERSION=${GITHUB_REF_NAME#v}`, `--config Release`; `upload-artifact` the
-    `ts3websitepreview_*.{dll,so,dylib}` (+ Windows dep DLLs).
-- **release** job: download artifacts; stage into `deploy/plugins/` (main binaries flat; Windows dep
-  DLLs into `deploy/plugins/ts3websitepreview/`); `sed` `<version>`→tag in `deploy/package.ini`;
-  `zip -r` the **contents** of `deploy/` → `ts3websitepreview.<tag>.ts3_plugin` (Linux `zip` gives
-  forward-slash + Deflate, satisfying TS3); `softprops/action-gh-release`.
+## Networking design (note the trade-off)
 
-### 6. Presets & docs
-- `CMakePresets.json`: add `linux` / `mac` configure+build presets (default generator, host
-  `condition`); Windows presets unchanged.
-- Update `README.md` + `CLAUDE.md`: cross-platform build commands, the vcpkg-vs-`third_party`
-  Windows fallback, "no settings dialog off Windows", and the CI/release flow.
+Per fetch: build a `QNetworkRequest` (`FollowRedirectsAttribute`, UA header), `get()`, spin a local
+`QEventLoop` until `finished`, read `readAll()` → `QByteArray` → `webparse`. QObjects are created
+locally so this works on whatever thread `onTextMessageEvent` runs on. It still **blocks** that thread
+during the fetch — same behaviour as today (already noted in CLAUDE.md), not a regression. The
+in-client threading (dialog on the Qt thread, network on the callback thread) can only be confirmed in
+a real TS3 client.
 
 ## Verification
-- **Local (real):** `cmake -S . -B build/linux -DBUILD_TESTS=ON && cmake --build build/linux` — must
-  compile `plugin.c`+`settings.c`+`core.c` clean against system libcurl/libxml2, producing
-  `build/linux/out/ts3websitepreview_linux_amd64.so`. Then `ctest --test-dir build/linux` → 23 tests
-  pass. This exercises the entire non-Windows port.
-- **Cannot test here:** macOS build, MSVC build (vcpkg + `third_party` fallback), and the Actions
-  workflow itself — CI always needs real-run iteration. These are delivered as a best-effort first
-  cut; note in the summary that the first tag push will likely need CI touch-ups (esp. vcpkg DLL
-  collection + the release staging paths).
-- Windows regression check (by user): local `third_party` build still produces the same
-  `ts3websitepreview_win64.dll` and behaves as before (dynamic load unchanged).
+
+- **Local (real):** `find_package(Qt5)` configure on Linux → build the plugin `.so` + both test EXEs;
+  `ctest` runs the Unity core tests **and** the QtTest parser tests. Additionally, a throwaway local
+  Qt CLI that fetches a real URL and prints the extracted title, to sanity-check fetch+parse
+  end-to-end (Qt Network works here).
+- **Cannot test here:** the MSVC and macOS builds, the `install-qt` CI, and in-TS3 runtime behaviour
+  (Qt dialog thread, blocking network on the callback thread) — flagged for real testing; the first
+  CI tag push will likely need touch-ups.
+- Confirm the `.ts3_plugin` now contains only `package.ini` + `plugins/ts3websitepreview_*.{dll,so,dylib}`
+  — no dependency subdir.

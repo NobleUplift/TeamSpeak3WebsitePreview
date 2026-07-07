@@ -3,22 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 
-size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp) {
-    size_t realsize = size * nmemb;
-    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-    mem->memory = (char *) realloc(mem->memory, mem->size + realsize + 1);
-    if (mem->memory == NULL) {
-        return 0;
-    }
-
-    memcpy(&(mem->memory[mem->size]), contents, realsize);
-    mem->size += realsize;
-    mem->memory[mem->size] = 0;
-
-    return realsize;
-}
-
 const char* GetURLFromMessage(const char* message) {
     const char *urlStart;
     const char *urlEnd;
@@ -67,20 +51,13 @@ const char* GetURLFromMessage(const char* message) {
 void BuildPreviewMessage(const char* title, const char* url,
                          const char* og_desc, const char* og_image,
                          char* out, size_t out_size) {
-    /* snprintf truncates safely on overflow; sprintf_s aborts via invalid-parameter handler */
+    int n;
     (void)og_image; /* TS3 chat has no tag that renders images */
-    snprintf(out, out_size, "\"%s\" <[URL]%s[/URL]>", title, url);
-#if defined(_WIN32) || defined(WIN32) || defined(WIN64) || defined(_WIN64)
-    if (og_desc) {
-        strncat_s(out, out_size, "\n", _TRUNCATE);
-        strncat_s(out, out_size, og_desc, _TRUNCATE);
+    /* snprintf is portable (C99 / MSVC>=2015) and truncates safely on overflow. */
+    n = snprintf(out, out_size, "\"%s\" <[URL]%s[/URL]>", title, url);
+    if (og_desc && n > 0 && (size_t)n < out_size) {
+        snprintf(out + n, out_size - (size_t)n, "\n%s", og_desc);
     }
-#else
-    if (og_desc) {
-        strncat(out, "\n", out_size - strlen(out) - 1);
-        strncat(out, og_desc, out_size - strlen(out) - 1);
-    }
-#endif
 }
 
 int FindURLsInMessage(const char* message, char** urls_out, int max_urls) {

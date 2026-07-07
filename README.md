@@ -76,34 +76,26 @@ Package layout (what the `.ts3_plugin` ZIP contains):
 ```
 package.ini
 plugins/
-  ts3websitepreview_win64.dll        ← Windows binaries (name suffix per arch)
+  ts3websitepreview_win64.dll        ← TS3 loads the binary matching the client OS/arch
   ts3websitepreview_win32.dll
-  ts3websitepreview_linux_amd64.so   ← Linux / macOS binaries
+  ts3websitepreview_linux_amd64.so
   ts3websitepreview_mac.dylib
-  ts3websitepreview/                 ← Windows-only bundled deps, in arch subdirs
-    win64/  (libcurl.dll, libxml2.dll, + their runtime DLLs)
-    win32/  (libcurl.dll, libxml2.dll, + their runtime DLLs)
 ```
 
-On Windows the plugin loads its bundled `libcurl`/`libxml2` at runtime from the arch subdir. On
-Linux/macOS it links the system libcurl + libxml2, so no dependency files are bundled.
+Nothing else is bundled — the plugin uses **Qt**, which the TeamSpeak client already provides.
 
 ---
 
 ## Requirements
 
-- **TeamSpeak 3** 3.6.2 or later (Plugin API 26)
-- **Windows** (Win32 / x64), **Linux** (x86-64), or **macOS**
-- The **settings dialog is Windows-only** (native Win32). On Linux/macOS the plugin runs with its
-  saved settings and no in-client configure button; edit `ts3websitepreview.ini` in the plugin's
-  config dir to change them.
+- **TeamSpeak 3** 3.6.2 or later (Plugin API 26), which provides **Qt 5.15.2** — the plugin's only *runtime* dependency (the HTML parser is compiled in)
+- **Windows** (Win32 / x64), **Linux** (x86-64), or **macOS** — the settings dialog (a Qt dialog) works on all three
 
 ---
 
 ## Building
 
-The build is **CMake-based** (CMake ≥ 3.21) — there is no `.sln`. First get the **TS3 SDK submodule**
-(both `libcurl` and `libxml2` are needed on every platform):
+The build is **CMake-based** (CMake ≥ 3.21) — there is no `.sln`. First get the **TS3 SDK submodule**:
 
 ```sh
 git clone --recursive <repo-url>
@@ -111,30 +103,26 @@ git clone --recursive <repo-url>
 git submodule update --init
 ```
 
-**Windows** — Visual Studio 2022 (Desktop C++ workload). Supply `libcurl` + `libxml2` + `iconv`
-(headers, import libs, DLLs) under `third_party/` as described in
-[third_party/README.md](third_party/README.md); libcurl must use the **SChannel** backend (no OpenSSL).
-The VS generator is single-arch per build tree, so build each arch separately:
+The HTML parser ([Gumbo](https://github.com/google/gumbo-parser)) is vendored as a submodule and built
+from source (so `--recursive` / `submodule update --init` above is what pulls it — nothing to install).
+The only thing you install is **Qt 5.15** (Widgets + Network). Install it, point CMake at it, and build:
 
-```bat
-cmake --preset win32 && cmake --build --preset win32
-cmake --preset win64 && cmake --build --preset win64
-```
-
-**Linux** — install system deps, then build:
-
-```sh
-sudo apt-get install -y libcurl4-openssl-dev libxml2-dev   # Debian/Ubuntu
-cmake --preset linux && cmake --build --preset linux
-```
-
-**macOS** — `brew install libxml2` (libcurl is system), then `cmake --preset mac && cmake --build --preset mac`.
+- **Windows** — Visual Studio 2022 + Qt 5.15.2 (msvc2019). Build each arch separately (the VS
+  generator is single-arch per build tree):
+  ```bat
+  cmake --preset win32 && cmake --build --preset win32
+  cmake --preset win64 && cmake --build --preset win64
+  ```
+- **Linux** — `sudo apt-get install -y qtbase5-dev`, then `cmake --preset linux && cmake --build --preset linux`.
+- **macOS** — `brew install qt@5` (then set `CMAKE_PREFIX_PATH=$(brew --prefix qt@5)`), then
+  `cmake --preset mac && cmake --build --preset mac`.
 
 Output binary: `build/<preset>/out/ts3websitepreview_<suffix>{.dll,.so,.dylib}`. Assembling all
 platforms into one installable `.ts3_plugin` is done by CI
 ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) on a `v*` tag push.
 
-To also build and run the 32 unit tests, add `-DBUILD_TESTS=ON` and run via CTest — e.g. on Linux:
+To also build and run the unit tests (Unity C core tests + a QtTest for the HTML parser), add
+`-DBUILD_TESTS=ON` and run via CTest — e.g. on Linux:
 
 ```sh
 cmake --preset linux -DBUILD_TESTS=ON && cmake --build --preset linux
